@@ -163,13 +163,20 @@ export function makeTraffic(scene, rng) {
       pos: -95 + rng() * 190,
       speed: 7 + rng() * 5,
       heading: vertical ? (lane > 0 ? 0 : Math.PI) : (lane > 0 ? Math.PI / 2 : -Math.PI / 2),
+      x: 0, z: 0, stopped: false, isTarget: false, paint,
     });
+  }
+  // Sinkronkan x/z awal supaya bisa dibajak / dikejar sejak frame pertama.
+  for (const car of cars) {
+    car.x = car.vertical ? car.street + car.lane : car.pos;
+    car.z = car.vertical ? car.pos : car.street + car.lane;
   }
   return cars;
 }
 
 export function updateTraffic(cars, dt) {
   for (const car of cars) {
+    if (car.stopped) continue; // dihentikan pemain (mis. Misi 2): diam di tempat
     car.pos += car.speed * dt * (car.lane > 0 ? 1 : -1);
     if (car.pos > 98) car.pos = -98;
     if (car.pos < -98) car.pos = 98;
@@ -179,5 +186,7 @@ export function updateTraffic(cars, dt) {
       car.group.position.set(car.pos, 0, car.street + car.lane);
     }
     car.group.rotation.y = car.heading;
+    car.x = car.group.position.x;
+    car.z = car.group.position.z;
   }
 }

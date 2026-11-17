@@ -19,6 +19,16 @@
   #wanted { position: absolute; top: 14px; right: 16px; font-size: 14px;
     font-weight: 700; letter-spacing: 2px; color: #cfd6e4; }
   #wanted .star { color: #ffd34d; }
+  #money { position: absolute; top: 40px; right: 16px; font-size: 16px;
+    font-weight: 800; color: #7dff9a; letter-spacing: .5px; }
+  #stolenBadge { position: absolute; top: 66px; right: 16px; font-size: 12px;
+    font-weight: 700; letter-spacing: 1px; color: #fff; background: #b02020;
+    padding: 4px 10px; border-radius: 6px; }
+  #missionBanner { position: absolute; left: 50%; top: 22%; transform: translateX(-50%);
+    text-align: center; background: rgba(10,16,30,.82); border: 2px solid #ffd34d;
+    border-radius: 12px; padding: 16px 30px; }
+  #missionBanner h3 { margin: 0 0 6px; font-size: 22px; color: #ffd34d; letter-spacing: 1px; }
+  #missionBanner p { margin: 0; font-size: 14px; color: #e8eaf2; }
   #speedo { position: absolute; right: 18px; bottom: 16px; text-align: right; }
   #speedo b { font-size: 42px; font-weight: 800; line-height: 1; }
   #speedo span { font-size: 13px; opacity: .85; }
@@ -56,7 +66,10 @@
 <div id="hud" class="hidden">
   <div id="district">Sunset Bay</div>
   <div id="objective">Jelajahi kota — cari mobil parkir lalu tekan E untuk mengemudi.</div>
-  <div id="wanted">WANTED <span class="star">☆☆☆☆☆</span></div>
+  <div id="wanted">WANTED <span id="wantedStars" class="star">☆☆☆☆☆</span></div>
+  <div id="money">Rp0</div>
+  <div id="stolenBadge" class="hidden">🚗 MOBIL CURIAN</div>
+  <div id="missionBanner" class="hidden"><h3 id="bannerTitle"></h3><p id="bannerText"></p></div>
   <canvas id="minimap" width="168" height="168"></canvas>
   <div id="speedo" class="hidden"><b id="speedNum">0</b><br><span>km/jam</span></div>
   <div id="hint">WASD jalan &nbsp;·&nbsp; Shift lari &nbsp;·&nbsp; Seret mouse untuk melihat</div>
@@ -68,10 +81,12 @@
     <h2>Kota pesisir orisinal — jelajahi dengan berjalan kaki atau mengemudi</h2>
     <p>Kamu Raka, kurir baru di kota teluk ini. Sore menjelang, jalanan ramai,
        mobil-mobil terparkir di tepi jalan. Jelajahi distriknya, naik mobil,
-       dan rasakan kotanya sebelum malam turun.</p>
+       dan rasakan kotanya sebelum malam turun. Tapi hati-hati: membajak
+       mobil menaikkan bintang wanted, dan polisi teluk tidak main-main.</p>
+    <p id="missionBrief" style="color:#ffd34d">Misi 1 — Antar Paket: bawa paket ke ujung dermaga (penanda emas). Hadiah Rp150.000.</p>
     <div class="controls">
       <b>W A S D</b> — jalan / gas, rem, belok saat mengemudi<br>
-      <b>Shift</b> — lari &nbsp;·&nbsp; <b>E</b> — masuk / keluar mobil<br>
+      <b>Shift</b> — lari &nbsp;·&nbsp; <b>E</b> — bajak / keluar mobil<br>
       <b>Seret mouse</b> — putar kamera &nbsp;·&nbsp; <b>Esc / P</b> — jeda
     </div><br>
     <button id="startBtn" class="bigbtn">▶ &nbsp;MULAI JELAJAH</button>
@@ -87,6 +102,16 @@
     <p>Posisimu tersimpan otomatis. Lanjutkan menjelajah Sunset Bay.</p>
     <button id="resumeBtn" class="bigbtn">▶ &nbsp;LANJUT</button>
     <p class="fine">Esc / P untuk kembali bermain.</p>
+  </div>
+</div>
+
+<div id="bustedScreen" class="screen hidden">
+  <div class="panel">
+    <h1 style="font-size:44px;color:#ff6b5e">TERTANGKAP!</h1>
+    <p>Polisi teluk berhasil menangkap Raka. Mobil disita, tapi Raka dilepas
+       dengan peringatan — dan cerita kurirnya belum selesai.</p>
+    <button id="retryBtn" class="bigbtn">↻ &nbsp;COBA LAGI</button>
+    <p class="fine">Wanted direset. Progres misi dan saldo tetap tersimpan.</p>
   </div>
 </div>
 

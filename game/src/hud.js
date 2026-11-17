@@ -1,8 +1,10 @@
 // HUD Sunset Bay: teks distrik/tujuan/petunjuk, speedometer saat
-// mengemudi, dan minimap kanvas 2D — jalan, laut, taman, mobil, dan
-// titik pemain yang berputar mengikuti arah hadap.
+// mengemudi, bintang wanted yang hidup, saldo Rp, lencana mobil curian,
+// banner misi selesai, dan minimap kanvas 2D — jalan, laut, taman, mobil,
+// polisi, penanda misi, dan titik pemain yang berputar mengikuti arah.
 
 import { CITY, STREETS } from './config.js';
+import { formatRp } from './missions.js';
 
 export function createHud() {
   const root = document.getElementById('hud');
@@ -11,15 +13,24 @@ export function createHud() {
   const speedo = document.getElementById('speedo');
   const speedNum = document.getElementById('speedNum');
   const hint = document.getElementById('hint');
+  const wantedEl = document.getElementById('wanted');
+  const wantedStars = document.getElementById('wantedStars');
+  const moneyEl = document.getElementById('money');
+  const stolenEl = document.getElementById('stolenBadge');
+  const banner = document.getElementById('missionBanner');
+  const bannerTitle = document.getElementById('bannerTitle');
+  const bannerText = document.getElementById('bannerText');
   const map = document.getElementById('minimap');
   const ctx = map.getContext('2d');
   const R = 84; // jari-jari minimap (px)
+  let bannerTimer = null;
 
   function toMap(x, z) {
     return [R + (x / (CITY.half + 20)) * R, R + (z / (CITY.half + 20)) * R];
   }
 
-  function drawMinimap(playerX, playerZ, heading, cars, walkers) {
+  function drawMinimap(playerX, playerZ, heading, cars, walkers, extra) {
+    const opts = extra || {};
     ctx.clearRect(0, 0, 168, 168);
     // Laut di barat.
     ctx.fillStyle = '#1e6f8e';
@@ -42,6 +53,18 @@ export function createHud() {
     const [px, pz] = toMap(20, 20);
     ctx.fillStyle = '#3f6b3a';
     ctx.fillRect(px - 12, pz - 12, 24, 24);
+    // Penanda misi: berlian emas berdenyut.
+    if (opts.missionPos) {
+      const [mx, mz] = toMap(opts.missionPos.x, opts.missionPos.z);
+      const pulse = 5 + Math.sin(Date.now() / 280) * 1.6;
+      ctx.fillStyle = '#ffd34d';
+      ctx.strokeStyle = '#7a5a00';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(mx, mz - pulse); ctx.lineTo(mx + pulse * 0.7, mz);
+      ctx.lineTo(mx, mz + pulse); ctx.lineTo(mx - pulse * 0.7, mz);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
     // Mobil (titik kuning) dan pejalan kaki (titik putih kecil).
     ctx.fillStyle = '#ffd34d';
     for (const car of cars) {
@@ -52,6 +75,27 @@ export function createHud() {
     for (const w of walkers) {
       const [wx, wz] = toMap(w.x, w.z);
       ctx.beginPath(); ctx.arc(wx, wz, 1.6, 0, Math.PI * 2); ctx.fill();
+    }
+    // Polisi: titik biru-merah dengan cincin berdenyut.
+    if (opts.police) {
+      const ringR = 5.4 + Math.sin(Date.now() / 300) * 1.2;
+      for (const car of opts.police) {
+        const [cx, cz] = toMap(car.x, car.z);
+        ctx.fillStyle = '#3d7dd8';
+        ctx.beginPath(); ctx.arc(cx, cz, 3.4, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#ff4040';
+        ctx.lineWidth = 1.4;
+        ctx.beginPath(); ctx.arc(cx, cz, ringR, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+    // Mobil target Misi 2: titik oranye besar.
+    if (opts.targetCar) {
+      const [tx, tz] = toMap(opts.targetCar.x, opts.targetCar.z);
+      ctx.fillStyle = '#ff8c1a';
+      ctx.beginPath(); ctx.arc(tx, tz, 4.5, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(tx, tz, 4.5, 0, Math.PI * 2); ctx.stroke();
     }
     // Pemain: segitiga putih menghadap arah jalan.
     const [ux, uy] = toMap(playerX, playerZ);
@@ -75,6 +119,24 @@ export function createHud() {
     setHint(text) { hint.textContent = text; },
     showSpeed(show) { speedo.classList.toggle('hidden', !show); },
     setSpeed(kmh) { speedNum.textContent = String(Math.round(kmh)); },
+    // Bintang wanted hidup: ★ terisi kuning, ☆ kosong redup; warna
+    // label memerah saat buronan tinggi.
+    setWanted(level) {
+      const filled = '★'.repeat(level);
+      const empty = '☆'.repeat(5 - level);
+      wantedStars.textContent = filled + empty;
+      wantedEl.style.color = level >= 3 ? '#ff6b5e' : level > 0 ? '#ffd34d' : '#cfd6e4';
+    },
+    setMoney(amount) { moneyEl.textContent = formatRp(amount); },
+    setStolen(stolen) { stolenEl.classList.toggle('hidden', !stolen); },
+    // Banner tengah layar beberapa detik saat misi tuntas.
+    showMissionComplete(mission) {
+      bannerTitle.textContent = '★ MISI SELESAI — ' + mission.title + ' ★';
+      bannerText.textContent = 'Hadiah ' + formatRp(mission.reward) + ' masuk ke saldo Raka.';
+      banner.classList.remove('hidden');
+      if (bannerTimer) clearTimeout(bannerTimer);
+      bannerTimer = setTimeout(() => banner.classList.add('hidden'), 4200);
+    },
     drawMinimap,
   };
 }

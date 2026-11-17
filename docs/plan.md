@@ -69,7 +69,49 @@ sendiri dari nol.
   Yang BELUM ada di M1 (stub untuk M2/M3): curi mobil + wanted/polisi,
   misi/cerita, combat, dan suara — HUD menampilkan "Wanted: —" sebagai
   tempatnya nanti, tanpa sistem di baliknya.
-- Tahap 2 — Sistem: curi mobil, wanted dan polisi,
-  serta misi pertama dengan cerita kurir selesai.
-- Tahap 3 — Poles: combat, save, balancing, dan
+- Tahap 2 — Sistem (MILESTONE 2, dibangun 2026-11-17): curi mobil,
+  wanted dan polisi, serta tiga misi cerita kurir selesai.
+  Desain M2 — Curi mobil: semua mobil parkir dan mobil traffic bisa
+  dibajak dengan E saat didekati; membajak mobil traffic menghentikan
+  mobilnya dan pengemudinya keluar lalu lari; mobil curian ditandai di
+  HUD ("MOBIL CURIAN") dan minimap. Wanted: bintang 1–5, naik saat
+  membajak (+1 parkir, +2 traffic), menabrak pejalan kaki (+2),
+  menabrak mobil polisi (+1), atau ngebut di dekat polisi (+1);
+  turun perlahan bila tidak ada polisi yang melihat (1 bintang per
+  ~12 detik saat bersembunyi). Polisi: mobil patroli hitam-putih
+  dengan lampu merah-biru kelap-kelip, spawn sejumlah bintang wanted
+  (maks 3 aktif), mengejar dan menabrak pemain; kontak 1 detik saat
+  wanted ≥ 3 berarti TERTANGKAP — layar gagal + tombol coba lagi
+  (wanted direset, Raka kembali ke titik awal, progres misi tetap).
+  Misi (berurutan, hadiah uang tampil di HUD sebagai saldo Rp):
+  M1 "Antar Paket" — bawa paket ke ujung dermaga, hadiah Rp150.000;
+  M2 "Kejar Kurir" — potong jalan kurir lain (mobil traffic target
+  bertanda emas) sampai berhenti lalu ambil paketnya, Rp250.000;
+  M3 "Kabur dari Polisi" — wanted naik ke 3 bintang, bertahan sampai
+  wanted hilang, Rp400.000. Tiap misi: briefing di layar start dan
+  objektif HUD, penanda suar cahaya + panah di dunia, dan penanda di
+  minimap; layar "MISI SELESAI" saat tuntas. Cerita orisinal: Raka,
+  kurir baru di Sunset Bay, dikejar utang lama dan diawasi polisi
+  teluk — tanpa unsur dari game komersial mana pun. Perbaikan kecil:
+  dermaga bisa dinaiki (collider penghalang dihapus, lantai dermaga
+  direndahkan, Raka naik ke ketinggian dermaga saat di atasnya);
+  pejalan kaki minggir saat pemain/mobil mendekat. Yang MASIH stub
+  untuk M3: combat dan suara.
+  Verifikasi M2 (headless Chrome, CDP, 2026-11-17): bajak mobil parkir
+  → wanted 1 + 1 polisi spawn; bajak mobil traffic → mobil berhenti,
+  pengemudi lari, wanted +2, dan bila itu mobil target Misi 2 maka
+  Misi 2 ikut selesai; Misi 1 → Rp150.000; Misi 2 → Rp400.000 total;
+  Misi 3 (wanted 3 → 0) → Rp800.000 total, semua misi selesai; polisi
+  mengejar (posisi terpantau mendekat tiap probe) dan kontak 1 detik
+  di wanted 3 → layar TERTANGKAP → Coba Lagi mereset wanted/polisi.
+  Tiga bug ditemukan saat playtest dan diperbaiki: (1) Misi 3 tidak
+  pernah selesai karena penjaga "tanpa target" mengembalikan update
+  lebih awal; (2) polisi menyerempet pemain lalu melaju terus sehingga
+  timer kontak selalu reset — polisi kini merangkak saat dekat dan
+  timer meluruh pelan; (3) pengemudi yang baru dibajak terhitung
+  "tertabrak" mobil diam — tabrakan pejalan kaki kini mensyaratkan
+  mobil melaju > 2 m/s. Screenshot M2: 1-chase.jpg (kejar-kejaran,
+  wanted 3, Rp400.000, MOBIL CURIAN) dan 2-mission.jpg (suar emas
+  dermaga Misi 1); 3-start.jpg dan 4-drive.jpg dipertahankan dari M1.
+- Tahap 3 — Poles: combat, suara, balancing, dan
   rekaman final sebelum batas waktu pengumpulan.

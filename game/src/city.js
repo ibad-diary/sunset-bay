@@ -225,10 +225,13 @@ export function buildCity(scene, rng) {
     }
   }
 
-  // Dermaga kayu menjorok ke teluk + tiang-tiangnya.
+  // Dermaga kayu menjorok ke teluk + tiang-tiangnya. Lantai dermaga
+  // rendah (puncak ~0,4 m) supaya bisa dinaiki pejalan kaki dari pantai;
+  // TIDAK ada collider — Raka berjalan naik ke atasnya (lihat pierTop di
+  // main.js), mobil tetap bisa lewat tapi melambat di tepinya.
   const woodMat = new THREE.MeshStandardMaterial({ color: 0x8a6844, roughness: 0.95 });
   const pier = new THREE.Mesh(new THREE.BoxGeometry(34, 0.5, 5), woodMat);
-  pier.position.set(CITY.bayEdge - 18, 0.6, 0);
+  pier.position.set(CITY.bayEdge - 18, 0.15, 0);
   pier.castShadow = true;
   pier.receiveShadow = true;
   scene.add(pier);
@@ -237,7 +240,8 @@ export function buildCity(scene, rng) {
     post.position.set(CITY.bayEdge - 4 - i * 6, 0, i % 2 === 0 ? -2.2 : 2.2);
     scene.add(post);
   }
-  addCollider(CITY.bayEdge - 18, 0, 34, 5); // ujung dermaga tidak bisa ditembus mobil
+  // Batas dermaga (x,z) + tinggi pijakan, dipakai main.js untuk menaikkan Raka.
+  const pierBounds = { minX: CITY.bayEdge - 35, maxX: CITY.bayEdge - 1, minZ: -2.5, maxZ: 2.5, topY: 0.4 };
 
   // Awan: gumpalan putih pipih yang melayang pelan (digerakkan di main).
   const cloudMat = new THREE.MeshStandardMaterial({ color: 0xfff2e0, roughness: 1, transparent: true, opacity: 0.85 });
@@ -265,5 +269,5 @@ export function buildCity(scene, rng) {
     { x: -6.5, z: 62, heading: Math.PI },
   ];
 
-  return { colliders, carSpots, clouds, parkCenter: parkBlock };
+  return { colliders, carSpots, clouds, parkCenter: parkBlock, pierBounds };
 }

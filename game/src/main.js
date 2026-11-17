@@ -1,15 +1,18 @@
 // Sunset Bay — orkestrasi utama: renderer three.js, kamera third-person,
-// gerak pejalan kaki, masuk/keluar mobil, pejalan kaki + traffic, HUD,
-// simpan otomatis, dan mode tangkapan layar (?shot=start|walk|drive|aerial).
+// gerak pejalan kaki, bajak mobil (parkir + traffic), wanted + polisi,
+// tiga misi cerita kurir, HUD, simpan otomatis, dan mode tangkapan layar
+// (?shot=start|walk|drive|aerial|steal|chase|mission).
 
 import * as THREE from 'three';
 import { CITY, PLAYER, CAR, TRAFFIC_COUNT, WALKER_COUNT, SAVE_EVERY_SECONDS, makeSeededRandom, pick } from './config.js';
 import { createInput, ACTION_ENTER_CAR, ACTION_PAUSE, ACTION_START } from './input.js';
 import { buildCity } from './city.js';
 import { buildPerson } from './characters.js';
-import { makeDrivableCar, driveCar, resolveCircle, makeTraffic, updateTraffic } from './vehicles.js';
+import { makeDrivableCar, driveCar, resolveCircle, makeTraffic, updateTraffic, buildCarMesh } from './vehicles.js';
 import { createHud } from './hud.js';
 import { saveGame, loadGame, hasSave } from './save.js';
+import { createWanted } from './wanted.js';
+import { createMissions, MISSIONS } from './missions.js';
 
 const params = new URLSearchParams(location.search);
 const SHOT = params.get('shot') || '';
@@ -31,6 +34,8 @@ const rng = makeSeededRandom(20261117);
 const city = buildCity(scene, rng);
 const input = createInput(canvas);
 const hud = createHud();
+const wanted = createWanted(scene);
+const missions = createMissions(scene);
 
 // --- Pemain: Raka, kurir berjaket teal dan beanie merah. ---
 const playerRig = buildPerson({});
@@ -38,31 +43,41 @@ scene.add(playerRig.group);
 const player = {
   x: 2, z: -30, heading: Math.PI, speed: 0, moving: false,
 };
+let playerRigY = 0.3; // naik saat berdiri di atas dermaga
 
 // --- Mobil yang bisa dikendarai (4, terparkir di tepi jalan). ---
 const PAINTS = [0xd94848, 0x3d7dd8, 0xe8b13c, 0x53a06a];
 const cars = city.carSpots.map((spot, i) => makeDrivableCar(scene, spot, PAINTS[i], i));
+for (const car of cars) car.stolen = false;
 let driving = -1; // indeks mobil yang sedang dikemudikan, -1 = jalan kaki
 
 // --- Pejalan kaki di trotoar. ---
 const walkerPalette = [0xc96a3b, 0x7a5fc0, 0x3f8f5f, 0xd8d3c8, 0x4a6a8a, 0xb03a5a];
 const walkers = [];
-for (let i = 0; i < WALKER_COUNT; i++) {
+function addWalker(x, z, opts) {
   const rig = buildPerson({
-    jacket: pick(rng, walkerPalette),
+    jacket: (opts && opts.jacket) || pick(rng, walkerPalette),
     pants: pick(rng, [0x2e3440, 0x4a3b2e, 0x3a3a4a]),
     beanie: pick(rng, [0x2e5f8a, 0x8a8a2e, 0x5a5a5a, 0xc0392b]),
   });
   scene.add(rig.group);
-  const alongStreet = i % 2 === 0;
-  walkers.push({
-    rig,
-    x: alongStreet ? -95 + rng() * 190 : [-86, -46, -6, 34, 74][i % 5],
-    z: alongStreet ? [-86, -46, -6, 34, 74][i % 5] : -95 + rng() * 190,
-    axis: alongStreet ? 'z' : 'x',
+  const w = {
+    rig, x, z,
+    axis: (opts && opts.axis) || 'z',
     dir: rng() < 0.5 ? 1 : -1,
     speed: 1.1 + rng() * 0.7,
-  });
+    fleeT: 0, fleeX: 0, fleeZ: 0, hitAt: -99,
+  };
+  walkers.push(w);
+  return w;
+}
+for (let i = 0; i < WALKER_COUNT; i++) {
+  const alongStreet = i % 2 === 0;
+  addWalker(
+    alongStreet ? -95 + rng() * 190 : [-86, -46, -6, 34, 74][i % 5],
+    alongStreet ? [-86, -46, -6, 34, 74][i % 5] : -95 + rng() * 190,
+    { axis: alongStreet ? 'z' : 'x' },
+  );
 }
 
 // --- Traffic. ---
@@ -73,16 +88,25 @@ const cam = { yaw: Math.PI, pitch: 0.32, dist: 7, tx: 0, ty: 2, tz: 0 };
 const camPos = new THREE.Vector3(10, 6, -40);
 const camTarget = new THREE.Vector3(0, 2, -30);
 
-let screen = 'start'; // start | play | pause
+let screen = 'start'; // start | play | pause | busted
 let saveTimer = 0;
 let framesRendered = 0;
 let elapsed = 0;
+let activeMissionId = null;
+let speedTrapCooldown = 0;
+let ramCooldown = 0;
+let chaseStaged = false;
 
 function districtAt(x, z) {
   if (x < -88) return 'Pantai Teluk';
   if (Math.hypot(x - 20, z - 20) < 26) return 'Taman Teluk';
   if (z > 70) return 'Dermaga Selatan';
   return 'Sunset Bay — Pusat Kota';
+}
+
+function onPier(x, z) {
+  const p = city.pierBounds;
+  return x >= p.minX && x <= p.maxX && z >= p.minZ && z <= p.maxZ;
 }
 
 function nearestCar(maxDist) {
@@ -95,14 +119,81 @@ function nearestCar(maxDist) {
   return best;
 }
 
+function nearestTrafficCar(maxDist) {
+  let best = null;
+  let bestD = maxDist;
+  for (const car of traffic) {
+    if (car.stopped) continue;
+    const d = Math.hypot(car.x - player.x, car.z - player.z);
+    if (d < bestD) { best = car; bestD = d; }
+  }
+  return best;
+}
+
+function refreshObjective() {
+  const m = missions.current;
+  if (m) hud.setObjective(m.title + ' — ' + m.objective);
+  else hud.setObjective('Semua misi selesai — jelajahi Sunset Bay sesukamu, Raka.');
+  const brief = document.getElementById('missionBrief');
+  if (brief) {
+    brief.textContent = m
+      ? m.title + ': ' + m.briefing + ' Hadiah ' + m.reward.toLocaleString('id-ID') + ' rupiah.'
+      : 'Semua misi selesai! Raka kini kurir yang dikenal di Sunset Bay.';
+  }
+}
+
 function enterCar(car) {
   driving = car.index;
   car.parked = false;
   playerRig.group.visible = false;
   hud.showSpeed(true);
-  hud.setObjective('Mengemudi — W gas, S rem/mundur, A/D belok. E untuk turun.');
+  hud.setStolen(!!car.stolen);
+  hud.setObjective(car.stolen
+    ? 'Mobil curian — kabur dari pandangan polisi supaya wanted turun!'
+    : 'Mengemudi — W gas, S rem/mundur, A/D belok. E untuk turun.');
   hud.setHint('W gas · S rem · A/D belok · E keluar mobil');
   cam.dist = 10.5;
+}
+
+// Membajak mobil parkir: naik wanted 1 bintang (sekali per mobil).
+function stealParkedCar(car) {
+  if (!car.stolen) {
+    car.stolen = true;
+    wanted.addStars(1);
+    hud.setWanted(wanted.level);
+    hud.setHint('Mobil dibajak! Wanted naik — polisi teluk mulai mengawasimu.');
+  }
+  enterCar(car);
+}
+
+// Membajak mobil traffic yang sedang jalan: mobil berhenti, pengemudinya
+// keluar dan lari, mobilnya jadi milik pemain (wanted +2).
+function hijackTrafficCar(tcar) {
+  const idx = traffic.indexOf(tcar);
+  if (idx >= 0) traffic.splice(idx, 1);
+  scene.remove(tcar.group);
+  // Bila yang dibajak adalah kurir target Misi 2, misinya ikut selesai.
+  const wasTarget = missions.targetCar === tcar;
+  if (wasTarget) missions.resolveTargetStolen();
+  // Pengemudi keluar dan lari menjauh dari Raka.
+  const dx = tcar.x - player.x;
+  const dz = tcar.z - player.z;
+  const len = Math.hypot(dx, dz) || 1;
+  const driver = addWalker(tcar.x + (dx / len) * 1.5, tcar.z + (dz / len) * 1.5, { jacket: 0xe87a2c });
+  driver.fleeT = 3.5;
+  driver.fleeX = dx / len;
+  driver.fleeZ = dz / len;
+  driver.hitAt = elapsed; // baru keluar dari mobil: bukan korban tabrakan
+  // Mobil yang sama kini jadi mobil yang bisa dikendarai pemain.
+  const paint = tcar.paint !== undefined ? tcar.paint : 0xe87a2c;
+  const car = makeDrivableCar(scene, { x: tcar.x, z: tcar.z, heading: tcar.heading }, paint, cars.length);
+  car.stolen = true;
+  car.parked = false;
+  cars.push(car);
+  wanted.addStars(2);
+  hud.setWanted(wanted.level);
+  hud.setHint('Mobil dibajak dari pengemudinya! Wanted +2 — kabur!');
+  enterCar(car);
 }
 
 function exitCar() {
@@ -115,32 +206,88 @@ function exitCar() {
   player.heading = car.heading;
   playerRig.group.visible = true;
   hud.showSpeed(false);
-  hud.setObjective('Jelajahi kota — cari mobil parkir lalu tekan E untuk mengemudi.');
+  hud.setStolen(false);
+  refreshObjective();
   hud.setHint('WASD jalan · Shift lari · Seret mouse untuk melihat');
   cam.dist = 7;
 }
+
+// Misi baru dimulai: Misi 2 mengikat satu mobil traffic jadi target,
+// Misi 3 menaikkan wanted ke 3 bintang.
+function onMissionStart(mission) {
+  activeMissionId = mission ? mission.id : null;
+  if (!mission) return;
+  if (mission.id === 'kejar-kurir') {
+    let target = traffic.find((c) => !c.stopped) || null;
+    if (!target && traffic.length === 0) {
+      // Semua traffic sudah dibajak: hadirkan satu kurir baru di jalan.
+      const { group } = buildCarMesh(0xe87a2c);
+      scene.add(group);
+      target = {
+        group, vertical: true, street: 0, lane: 2.4, pos: -60,
+        speed: 6, heading: 0, x: 2.4, z: -60, stopped: false, isTarget: false, paint: 0xe87a2c,
+      };
+      traffic.push(target);
+    }
+    if (target) missions.bindTarget(target);
+  }
+  if (mission.id === 'kabur-polisi') missions.armEscape(wanted);
+  refreshObjective();
+}
+
+missions.onComplete = (mission) => {
+  hud.showMissionComplete(mission);
+  hud.setMoney(missions.money);
+  hud.setWanted(wanted.level);
+  refreshObjective();
+};
 
 function startGame(fromSave) {
   const saved = fromSave ? loadGame() : null;
   if (saved) {
     player.x = saved.player.x; player.z = saved.player.z; player.heading = saved.player.heading;
-    if (saved.car) {
+    if (saved.car && saved.car.index < cars.length) {
       const car = cars[saved.car.index];
       car.x = saved.car.x; car.z = saved.car.z; car.heading = saved.car.heading;
       car.group.position.set(car.x, 0, car.z);
       car.group.rotation.y = car.heading;
     }
+    if (typeof saved.money === 'number') missions.setMoney(saved.money);
+    if (typeof saved.missionIndex === 'number') missions.setIndex(saved.missionIndex);
   }
+  hud.setMoney(missions.money);
+  hud.setWanted(wanted.level);
+  refreshObjective();
   document.getElementById('startScreen').classList.add('hidden');
   document.getElementById('pauseScreen').classList.add('hidden');
+  document.getElementById('bustedScreen').classList.add('hidden');
   hud.show();
   screen = 'play';
+  onMissionStart(missions.current);
 }
 
 document.getElementById('startBtn').addEventListener('click', () => startGame(false));
 document.getElementById('continueBtn').addEventListener('click', () => startGame(true));
 document.getElementById('resumeBtn').addEventListener('click', () => {
   document.getElementById('pauseScreen').classList.add('hidden');
+  screen = 'play';
+});
+document.getElementById('retryBtn').addEventListener('click', () => {
+  // Coba lagi dari save: wanted direset, Raka kembali ke titik awal.
+  wanted.clear();
+  hud.setWanted(0);
+  if (driving >= 0) {
+    cars[driving].speed = 0;
+    cars[driving].parked = true;
+    driving = -1;
+  }
+  player.x = 2; player.z = -30; player.heading = Math.PI;
+  playerRig.group.visible = true;
+  playerRig.group.position.set(player.x, 0.3, player.z);
+  hud.showSpeed(false);
+  hud.setStolen(false);
+  refreshObjective();
+  document.getElementById('bustedScreen').classList.add('hidden');
   screen = 'play';
 });
 if (hasSave()) document.getElementById('continueBtn').classList.remove('hidden');
@@ -153,6 +300,11 @@ function togglePause() {
     screen = 'play';
     document.getElementById('pauseScreen').classList.add('hidden');
   }
+}
+
+function showBusted() {
+  screen = 'busted';
+  document.getElementById('bustedScreen').classList.remove('hidden');
 }
 
 // --- Langkah simulasi (fixed step). ---
@@ -173,16 +325,55 @@ function step(dt) {
   }
   updateTraffic(traffic, dt);
 
+  // Wanted + polisi: kejar pemain, lampu strobo, peluruhan saat sembunyi.
+  const focusX = driving >= 0 ? cars[driving].x : player.x;
+  const focusZ = driving >= 0 ? cars[driving].z : player.z;
+  wanted.update(dt, focusX, focusZ, city.colliders);
+  hud.setWanted(wanted.level);
+  if (wanted.arrestReady()) {
+    showBusted();
+    return;
+  }
+
+  // Misi: penanda suar + penyelesaian; misi baru memicu pengikatannya.
+  const done = missions.update(dt, focusX, focusZ, wanted);
+  if (done) hud.setMoney(missions.money);
+  if (missions.current && missions.current.id !== activeMissionId) onMissionStart(missions.current);
+  if (!missions.current && activeMissionId !== null) { activeMissionId = null; refreshObjective(); }
+
+  // Pejalan kaki: patroli trotoar, minggir saat pemain/mobil mendekat,
+  // dan lari menjauh bila baru saja ketakutan.
   for (const w of walkers) {
-    const pos = w.axis === 'z' ? w.z : w.x;
-    const next = pos + w.dir * w.speed * dt;
-    if (next > 95 || next < -95) w.dir *= -1;
-    if (w.axis === 'z') w.z += w.dir * w.speed * dt; else w.x += w.dir * w.speed * dt;
+    const threatX = driving >= 0 ? cars[driving].x : player.x;
+    const threatZ = driving >= 0 ? cars[driving].z : player.z;
+    const tdx = w.x - threatX;
+    const tdz = w.z - threatZ;
+    const tdist = Math.hypot(tdx, tdz);
+    if (w.fleeT > 0) {
+      w.fleeT -= dt;
+      w.x += w.fleeX * 5 * dt;
+      w.z += w.fleeZ * 5 * dt;
+      w.rig.group.rotation.y = Math.atan2(w.fleeX, w.fleeZ);
+      w.rig.animateWalk(dt, 5, true);
+    } else if (tdist < 4.5 && tdist > 0.01) {
+      // Minggir: melangkah menjauh dari ancaman, tegak lurus jalan.
+      const ax = tdx / tdist;
+      const az = tdz / tdist;
+      w.x += ax * 2.4 * dt;
+      w.z += az * 2.4 * dt;
+      w.rig.group.rotation.y = Math.atan2(ax, az);
+      w.rig.animateWalk(dt, 2.4, false);
+    } else {
+      const pos = w.axis === 'z' ? w.z : w.x;
+      const next = pos + w.dir * w.speed * dt;
+      if (next > 95 || next < -95) w.dir *= -1;
+      if (w.axis === 'z') w.z += w.dir * w.speed * dt; else w.x += w.dir * w.speed * dt;
+      w.rig.group.rotation.y = w.axis === 'z'
+        ? (w.dir > 0 ? 0 : Math.PI)
+        : (w.dir > 0 ? Math.PI / 2 : -Math.PI / 2);
+      w.rig.animateWalk(dt, w.speed, false);
+    }
     w.rig.group.position.set(w.x, 0.3, w.z);
-    w.rig.group.rotation.y = w.axis === 'z'
-      ? (w.dir > 0 ? 0 : Math.PI)
-      : (w.dir > 0 ? Math.PI / 2 : -Math.PI / 2);
-    w.rig.animateWalk(dt, w.speed, false);
   }
 
   if (driving >= 0) {
@@ -192,6 +383,42 @@ function step(dt) {
     const speed = driveCar(car, gas, steer, dt, city.colliders, cars);
     hud.setSpeed(Math.abs(speed) * 3.6);
     hud.setDistrict(districtAt(car.x, car.z));
+    // Ngebut di dekat polisi: +1 bintang (dengan jeda antar tilang).
+    speedTrapCooldown = Math.max(0, speedTrapCooldown - dt);
+    ramCooldown = Math.max(0, ramCooldown - dt);
+    if (Math.abs(speed) > 20 && wanted.nearestPoliceDist(car.x, car.z) < 25 && speedTrapCooldown === 0) {
+      wanted.addStars(1);
+      hud.setWanted(wanted.level);
+      hud.setHint('Ngebut di depan polisi! Wanted naik.');
+      speedTrapCooldown = 8;
+    }
+    // Menabrak mobil polisi saat mengemudi: +1 bintang.
+    if (ramCooldown === 0 && wanted.police.some((p) => Math.hypot(p.x - car.x, p.z - car.z) < 3.2) && Math.abs(speed) > 5) {
+      wanted.addStars(1);
+      hud.setWanted(wanted.level);
+      ramCooldown = 6;
+    }
+    // Menabrak pejalan kaki: +2 bintang, pejalan kaki lari ketakutan.
+    // Hanya saat mobil benar-benar melaju — pejalan kaki yang lewat di
+    // samping mobil diam (mis. pengemudi yang baru dibajak dan lari)
+    // bukan tabrakan.
+    for (const w of walkers) {
+      const d = Math.hypot(w.x - car.x, w.z - car.z);
+      if (d < 2.2 && Math.abs(speed) > 2 && elapsed - w.hitAt > 3) {
+        w.hitAt = elapsed;
+        wanted.addStars(2);
+        hud.setWanted(wanted.level);
+        hud.setHint('Kamu menabrak pejalan kaki! Wanted +2.');
+        const len = Math.hypot(w.x - car.x, w.z - car.z) || 1;
+        w.fleeX = (w.x - car.x) / len;
+        w.fleeZ = (w.z - car.z) / len;
+        w.fleeT = 2.5;
+      }
+    }
+    // Polisi menempel di wanted rendah: mobil didorong pelan.
+    if (wanted.level > 0 && wanted.level < 3 && wanted.rammedPlayer(car.x, car.z)) {
+      car.speed *= 0.985;
+    }
     if (actions & ACTION_ENTER_CAR) exitCar();
     cam.tx = car.x; cam.tz = car.z; cam.ty = 1.6;
     // Kamera mengikuti dari belakang mobil.
@@ -223,24 +450,39 @@ function step(dt) {
       const nx = player.x + Math.sin(player.heading) * player.speed * dt;
       const nz = player.z + Math.cos(player.heading) * player.speed * dt;
       const hit = resolveCircle(nx, nz, PLAYER.radius, city.colliders);
-      player.x = Math.max(-CITY.half - 4, Math.min(CITY.half, hit.x));
+      // Di jalur dermaga (z ~ 0) Raka boleh jalan sampai ujung dermaga;
+      // di tempat lain batas barat kota tetap di garis pantai.
+      const minX = Math.abs(nz) < 3 ? city.pierBounds.minX : -CITY.half - 4;
+      player.x = Math.max(minX, Math.min(CITY.half, hit.x));
       player.z = Math.max(-CITY.half, Math.min(CITY.half, hit.z));
     }
-    playerRig.group.position.set(player.x, 0.3, player.z);
+    // Naik ke ketinggian lantai dermaga saat berdiri di atasnya.
+    const wantRigY = onPier(player.x, player.z) ? 0.3 + city.pierBounds.topY : 0.3;
+    playerRigY += (wantRigY - playerRigY) * Math.min(1, dt * 10);
+    playerRig.group.position.set(player.x, playerRigY, player.z);
     playerRig.group.rotation.y = player.heading;
     if (player.moving) playerRig.animateWalk(dt, player.speed, running);
     else playerRig.idle(dt, elapsed);
 
     hud.setDistrict(districtAt(player.x, player.z));
     const near = nearestCar(3.6);
+    const nearTraffic = near ? null : nearestTrafficCar(4.5);
     if (near) {
-      hud.setHint('Tekan E untuk masuk mobil');
-      hud.setObjective('Mobil parkir di dekatmu — tekan E untuk mengemudi.');
+      hud.setHint(near.stolen ? 'Tekan E untuk masuk mobil curianmu' : 'Tekan E untuk membajak mobil ini');
+      hud.setObjective(near.stolen
+        ? 'Mobil curianmu — tekan E untuk mengemudi.'
+        : 'Mobil parkir di dekatmu — tekan E untuk membajaknya (wanted +1).');
+    } else if (nearTraffic) {
+      hud.setHint('Tekan E untuk membajak mobil yang lewat ini!');
+      hud.setObjective('Mobil melintas di dekatmu — tekan E untuk membajaknya (wanted +2).');
     } else {
       hud.setHint('WASD jalan · Shift lari · Seret mouse untuk melihat');
-      hud.setObjective('Jelajahi kota — cari mobil parkir lalu tekan E untuk mengemudi.');
+      refreshObjective();
     }
-    if ((actions & ACTION_ENTER_CAR) && near) enterCar(near);
+    if (actions & ACTION_ENTER_CAR) {
+      if (near) stealParkedCar(near);
+      else if (nearTraffic) hijackTrafficCar(nearTraffic);
+    }
     cam.tx = player.x; cam.tz = player.z; cam.ty = 1.8;
   }
 
@@ -251,9 +493,13 @@ function step(dt) {
     const car = driving >= 0 ? cars[driving] : null;
     saveGame({
       playerX: player.x, playerZ: player.z, playerHeading: player.heading,
-      carIndex: car ? car.index : -1,
+      // Mobil bajakan dari traffic (indeks >= 4) tidak dipulihkan saat muat:
+      // simpan tanpa mobil supaya save tetap valid.
+      carIndex: car && car.index < 4 ? car.index : -1,
       carX: car ? car.x : 0, carZ: car ? car.z : 0,
       carHeading: car ? car.heading : 0,
+      money: missions.money,
+      missionIndex: missions.index,
     });
   }
 }
@@ -284,7 +530,32 @@ function frame(now) {
     const hx = driving >= 0 ? cars[driving].x : player.x;
     const hz = driving >= 0 ? cars[driving].z : player.z;
     const hh = driving >= 0 ? cars[driving].heading : player.heading;
-    hud.drawMinimap(hx, hz, hh, cars, walkers);
+    const mpos = missions.targetPos();
+    hud.drawMinimap(hx, hz, hh, cars, walkers, {
+      missionPos: mpos,
+      police: wanted.police,
+      targetCar: missions.targetCar,
+    });
+  }
+
+  // Panggung foto kejar-kejaran: jaga satu mobil polisi tetap dalam
+  // frame — bila tertinggal di belakang kamera atau lebih dari 25 m,
+  // tempatkan lagi di depan mobil pemain (menghadap ke arahnya) supaya
+  // terlihat jelas di foto sebagai patroli yang mengejar.
+  if (SHOT === 'chase' && wanted.police.length > 0 && driving >= 0) {
+    const car = cars[driving];
+    const cop = wanted.police[0];
+    const dx = cop.x - car.x;
+    const dz = cop.z - car.z;
+    const d = Math.hypot(dx, dz);
+    const along = dx * Math.sin(car.heading) + dz * Math.cos(car.heading);
+    if (along < 2 || d > 25) {
+      cop.x = car.x + Math.sin(car.heading) * 14 + Math.cos(car.heading) * 6;
+      cop.z = car.z + Math.cos(car.heading) * 14 - Math.sin(car.heading) * 6;
+      cop.heading = car.heading + Math.PI;
+      cop.group.position.set(cop.x, 0, cop.z);
+      chaseStaged = true;
+    }
   }
 
   renderer.render(scene, camera);
@@ -335,10 +606,88 @@ function stageShot() {
     camPos.set(60, 110, 90);
     return;
   }
+  if (SHOT === 'steal') {
+    startGame(false);
+    // Raka berdiri di samping mobil parkir pertama, siap membajak.
+    player.x = cars[0].x + 2.6; player.z = cars[0].z + 1.2; player.heading = Math.PI * 0.75;
+    cam.yaw = Math.PI * 0.9; cam.pitch = 0.3; cam.dist = 8;
+    return;
+  }
+  if (SHOT === 'chase') {
+    startGame(false);
+    // Misi 3 sedang jalan: wanted 3, Raka kabur naik mobil curian,
+    // saldo hasil dua misi pertama tampil di HUD.
+    missions.setMoney(400000);
+    missions.setIndex(2);
+    hud.setMoney(400000);
+    const car = cars[0];
+    car.stolen = true;
+    car.x = 2.5; car.z = -30; car.speed = 14;
+    car.group.position.set(car.x, 0, car.z);
+    enterCar(car);
+    input.inject('KeyW', true);
+    missions.armEscape(wanted);
+    activeMissionId = 'kabur-polisi';
+    refreshObjective();
+    cam.yaw = Math.PI; cam.pitch = 0.28;
+    return;
+  }
+  if (SHOT === 'mission') {
+    startGame(false);
+    // Misi 1: Raka berjalan di pantai menuju suar emas di ujung dermaga.
+    // Posisi z=5 supaya palem pantai tidak menutupi pandangan ke dermaga.
+    player.x = -98; player.z = 5; player.heading = -Math.PI / 2;
+    cam.yaw = Math.PI / 2; cam.pitch = 0.42; cam.dist = 12;
+    camPos.set(-84, 6, 5);
+    return;
+  }
 }
 
 stageShot();
 requestAnimationFrame(frame);
 
 // Penanda untuk alat luar: game sudah dimuat dan siap dimainkan.
-window.__sunsetBay = { get screen() { return screen; }, get driving() { return driving; } };
+window.__sunsetBay = {
+  get screen() { return screen; },
+  get driving() { return driving; },
+  get wanted() { return wanted.level; },
+  get money() { return missions.money; },
+  get mission() { return missions.current ? missions.current.id : 'done'; },
+  get police() { return wanted.police.length; },
+  get targetPos() { return missions.targetPos(); },
+  get targetCar() { return missions.targetCar ? { x: missions.targetCar.x, z: missions.targetCar.z } : null; },
+  get chase() { return { hold: missions.chaseHold, px: player.x, pz: player.z }; },
+  get policePos() { return wanted.police.map((c) => ({ x: +c.x.toFixed(1), z: +c.z.toFixed(1), contact: +c.contactTimer.toFixed(2) })); },
+  // Bantuan playtest headless: memicu aksi yang sama seperti tombol pemain.
+  debug: {
+    setWanted(n) { wanted.setStars(n); hud.setWanted(wanted.level); },
+    stealNearest() {
+      const near = nearestCar(3.6);
+      if (near) stealParkedCar(near);
+      else { const t = nearestTrafficCar(4.5); if (t) hijackTrafficCar(t); }
+    },
+    // Teleport Raka ke target misi aktif (bantuan playtest saja).
+    gotoMissionTarget() {
+      const pos = missions.targetPos();
+      if (!pos) return;
+      if (driving >= 0) {
+        const car = cars[driving];
+        car.x = pos.x + 2.5; car.z = pos.z + 2.5;
+        car.group.position.set(car.x, 0, car.z);
+      } else {
+        player.x = pos.x + 2.5; player.z = pos.z + 2.5;
+      }
+    },
+    // Tarik mobil polisi terdekat ke samping pemain (bantuan playtest
+    // penangkapan saja — memicu kontak 1 detik yang berujung TERTANGKAP).
+    pullPoliceClose() {
+      const px = driving >= 0 ? cars[driving].x : player.x;
+      const pz = driving >= 0 ? cars[driving].z : player.z;
+      const cop = wanted.police[0];
+      if (!cop) return;
+      cop.x = px + 1.5; cop.z = pz + 1.5;
+      cop.speed = 0;
+      cop.group.position.set(cop.x, 0, cop.z);
+    },
+  },
+};
