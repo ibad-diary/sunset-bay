@@ -53,8 +53,12 @@ export function buildPerson({ jacket = 0x2a7f7f, pants = 0x2e3440, beanie = 0xc0
   const legR = limb(pantsMat, 0.2, 0.78, 0.2, 0.16, 0.78);
 
   let phase = 0;
+  let punchT = 0; // detik tersisa ayunan pukulan (0 = tidak memukul)
+  const PUNCH_LEN = 0.22;
   return {
     group,
+    // Mulai ayunan pukulan: lengan kanan menghantam ke depan.
+    punch() { punchT = PUNCH_LEN; },
     // Ayunan jalan: kaki/lengan berlawanan arah, badan sedikit membungkuk saat lari.
     animateWalk(dt, speed, running) {
       phase += dt * speed * 2.4;
@@ -66,12 +70,24 @@ export function buildPerson({ jacket = 0x2a7f7f, pants = 0x2e3440, beanie = 0xc0
       armR.rotation.x = s * swing * 0.8;
       torso.position.y = 1.12 + Math.abs(Math.cos(phase)) * 0.045 * Math.min(1, speed / 4);
       torso.rotation.x = running ? 0.12 : 0.03;
+      if (punchT > 0) {
+        punchT = Math.max(0, punchT - dt);
+        const p = 1 - punchT / PUNCH_LEN;
+        armR.rotation.x = -1.8 * Math.sin(p * Math.PI);
+        armR.rotation.z = -0.35 * Math.sin(p * Math.PI);
+      }
     },
     idle(dt, time) {
       legL.rotation.x *= 0.8; legR.rotation.x *= 0.8;
       armL.rotation.x *= 0.8; armR.rotation.x *= 0.8;
       torso.position.y = 1.12 + Math.sin(time * 2) * 0.012;
       torso.rotation.x = 0;
+      if (punchT > 0) {
+        punchT = Math.max(0, punchT - dt);
+        const p = 1 - punchT / PUNCH_LEN;
+        armR.rotation.x = -1.8 * Math.sin(p * Math.PI);
+        armR.rotation.z = -0.35 * Math.sin(p * Math.PI);
+      }
     },
   };
 }

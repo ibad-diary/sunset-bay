@@ -71,8 +71,8 @@ function makeLamp() {
 
 export function buildCity(scene, rng) {
   const colliders = [];
-  const addCollider = (x, z, w, d) => {
-    colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
+  const addCollider = (x, z, w, d, top) => {
+    colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2, top: top || 12 });
   };
 
   // Langit senja + kabut hangat.
@@ -193,7 +193,7 @@ export function buildCity(scene, rng) {
         tower.castShadow = true;
         tower.receiveShadow = true;
         scene.add(tower);
-        addCollider(x, z, w, d);
+        addCollider(x, z, w, d, 0.3 + h);
         // Atap: kotak pendingin kecil supaya siluet tidak polos.
         if (rng() < 0.6) {
           const ac = new THREE.Mesh(

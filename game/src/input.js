@@ -7,6 +7,8 @@
 export const ACTION_ENTER_CAR = 1;
 export const ACTION_PAUSE = 2;
 export const ACTION_START = 4;
+export const ACTION_PUNCH = 8;
+export const ACTION_MUTE = 16;
 
 const FORWARD = new Set(['KeyW', 'ArrowUp']);
 const BACK = new Set(['KeyS', 'ArrowDown']);
@@ -16,6 +18,8 @@ const RUN = new Set(['ShiftLeft', 'ShiftRight']);
 const ENTER = new Set(['KeyE']);
 const PAUSE = new Set(['KeyP', 'Escape']);
 const START = new Set(['Enter', 'Space']);
+const PUNCH = new Set(['KeyF']);
+const MUTE = new Set(['KeyM']);
 
 export function createInput(canvas) {
   const held = new Set();
@@ -25,12 +29,17 @@ export function createInput(canvas) {
   let dragging = false;
   let lastX = 0;
   let lastY = 0;
+  let downX = 0;
+  let downY = 0;
+  let downAt = 0;
   let locked = false;
 
   function press(code) {
     if (ENTER.has(code)) actions |= ACTION_ENTER_CAR;
     else if (PAUSE.has(code)) actions |= ACTION_PAUSE;
     else if (START.has(code)) actions |= ACTION_START;
+    else if (PUNCH.has(code)) actions |= ACTION_PUNCH;
+    else if (MUTE.has(code)) actions |= ACTION_MUTE;
   }
 
   window.addEventListener('keydown', (event) => {
@@ -48,11 +57,21 @@ export function createInput(canvas) {
     dragging = true;
     lastX = event.clientX;
     lastY = event.clientY;
+    downX = event.clientX;
+    downY = event.clientY;
+    downAt = Date.now();
     if (canvas.requestPointerLock) {
       try { canvas.requestPointerLock(); } catch (_) { /* seret tetap jalan */ }
     }
   });
-  window.addEventListener('pointerup', () => { dragging = false; });
+  window.addEventListener('pointerup', (event) => {
+    // Klik cepat tanpa seret = pukulan (klik mouse memukul, seperti F).
+    if (dragging && Date.now() - downAt < 250 &&
+        Math.hypot(event.clientX - downX, event.clientY - downY) < 6) {
+      actions |= ACTION_PUNCH;
+    }
+    dragging = false;
+  });
   document.addEventListener('pointerlockchange', () => {
     locked = document.pointerLockElement === canvas;
   });

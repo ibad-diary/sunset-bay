@@ -8,12 +8,15 @@ import { SAVE_KEY } from './config.js';
 export function saveGame(state) {
   try {
     const payload = {
-      version: 2,
+      version: 3,
       savedAt: Date.now(),
       player: { x: state.playerX, z: state.playerZ, heading: state.playerHeading },
       car: state.carIndex === -1 ? null : {
         index: state.carIndex, x: state.carX, z: state.carZ, heading: state.carHeading,
       },
+      // Mobil curian dari traffic (indeks >= 4) ikut tersimpan lengkap
+      // (posisi + warna) supaya bisa dipulihkan saat muat — bukan dibuang.
+      carData: state.carData || null,
       money: state.money || 0,
       missionIndex: state.missionIndex || 0,
     };
@@ -29,7 +32,7 @@ export function loadGame() {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const data = JSON.parse(raw);
-    if (!data || (data.version !== 1 && data.version !== 2) || !data.player) return null;
+    if (!data || (data.version !== 1 && data.version !== 2 && data.version !== 3) || !data.player) return null;
     // Save v1 (M1) tidak punya uang/misi: default 0 agar tetap bisa dimuat.
     if (data.version === 1) { data.money = 0; data.missionIndex = 0; }
     return data;

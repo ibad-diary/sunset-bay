@@ -166,6 +166,7 @@ export function makeTraffic(scene, rng) {
       x: 0, z: 0, stopped: false, isTarget: false, paint,
     });
   }
+  for (const car of cars) car.cruiseSpeed = car.speed;
   // Sinkronkan x/z awal supaya bisa dibajak / dikejar sejak frame pertama.
   for (const car of cars) {
     car.x = car.vertical ? car.street + car.lane : car.pos;
@@ -174,10 +175,18 @@ export function makeTraffic(scene, rng) {
   return cars;
 }
 
-export function updateTraffic(cars, dt) {
+export function updateTraffic(cars, dt, avoid) {
   for (const car of cars) {
     if (car.stopped) continue; // dihentikan pemain (mis. Misi 2): diam di tempat
-    car.pos += car.speed * dt * (car.lane > 0 ? 1 : -1);
+    // Menghindar: berhenti bila pemain/mobil pemain menghalangi jalan
+    // di depan (jarak < 7 m) — lalu jalan lagi setelah jalanan kosong.
+    let effSpeed = car.cruiseSpeed || car.speed;
+    if (avoid) {
+      const dx = car.x - avoid.x;
+      const dz = car.z - avoid.z;
+      if (Math.hypot(dx, dz) < 7) effSpeed = 0;
+    }
+    car.pos += effSpeed * dt * (car.lane > 0 ? 1 : -1);
     if (car.pos > 98) car.pos = -98;
     if (car.pos < -98) car.pos = 98;
     if (car.vertical) {

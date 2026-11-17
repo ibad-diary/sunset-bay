@@ -115,3 +115,27 @@ sendiri dari nol.
   dermaga Misi 1); 3-start.jpg dan 4-drive.jpg dipertahankan dari M1.
 - Tahap 3 — Poles: combat, suara, balancing, dan
   rekaman final sebelum batas waktu pengumpulan.
+- Tahap 3 — Poles (MILESTONE 3, dibangun 2026-11-17): combat, suara,
+  dan polish murah selesai. Desain M3 — Combat: pukulan jarak dekat
+  saat jalan kaki (tombol F atau klik mouse, file baru combat.js):
+  ayunan lengan kanan Raka (characters.js: punch()), efek sapuan
+  putih di depan pemain, pejalan kaki yang kena terdorong 2,5 m lalu
+  lari ketakutan 3 detik; memukul pejalan kaki/polisi menaikkan wanted
+  +1; prompt HUD "F pukul" muncul bila pejalan kaki dekat, kilat
+  "💥 PUKUL! KENA!" di tengah layar saat mendarat. Suara (file baru
+  audio.js, semua prosedural WebAudio, tanpa aset eksternal): dengung
+  mesin (pitch ikut laju mobil), sirene dua nada saat wanted ≥ 1 dan
+  polisi dekat (< 45 m), bunyi ambil/antar paket, dentum pukulan,
+  jingle 4 nada saat misi selesai, dan pad ambient Am–F–C–G pelan yang
+  berganti akor tiap 5 detik; tombol M = bisu + ikon 🔊/🔇 di HUD;
+  AudioContext hanya dibuat setelah gestur pengguna (klik/tombol),
+  dibungkus try/catch supaya headless Chrome tidak throw. Polish:
+  (a) traffic berhenti bila pemain/mobil menghalangi jalan (< 7 m),
+  pejalan kaki sudah minggir sejak M2; (b) kamera tidak tembus gedung
+  — collider kini menyimpan tinggi atap, posisi kamera dinaikkan ke
+  atas atap bila masuk kotak gedung; (c) mobil curian dari traffic
+  kini ikut tersimpan (save v3: carData posisi + warna) dan dipulihkan
+  saat Lanjutkan. Balance polisi (26 vs 30 m/s) dan harga/hadiah misi
+  TIDAK diubah. Screenshot baru: 4-combat.jpg menggantikan
+  4-drive.jpg (drive sudah terwakili di 1-chase.jpg); 1-chase,
+  2-mission, 3-start dipertahankan.

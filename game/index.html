@@ -21,9 +21,15 @@
   #wanted .star { color: #ffd34d; }
   #money { position: absolute; top: 40px; right: 16px; font-size: 16px;
     font-weight: 800; color: #7dff9a; letter-spacing: .5px; }
-  #stolenBadge { position: absolute; top: 66px; right: 16px; font-size: 12px;
+  #stolenBadge { position: absolute; top: 92px; right: 16px; font-size: 12px;
     font-weight: 700; letter-spacing: 1px; color: #fff; background: #b02020;
     padding: 4px 10px; border-radius: 6px; }
+  #muteIcon { position: absolute; top: 66px; right: 16px; font-size: 12px;
+    font-weight: 700; letter-spacing: 1px; color: #e8eaf2; background: rgba(10,14,24,.55);
+    padding: 4px 10px; border-radius: 6px; }
+  #punchFlash { position: absolute; left: 50%; top: 38%; transform: translateX(-50%);
+    font-size: 26px; font-weight: 800; letter-spacing: 1px; color: #ffd34d;
+    text-shadow: 0 2px 8px rgba(0,0,0,.8); }
   #missionBanner { position: absolute; left: 50%; top: 22%; transform: translateX(-50%);
     text-align: center; background: rgba(10,16,30,.82); border: 2px solid #ffd34d;
     border-radius: 12px; padding: 16px 30px; }
@@ -68,7 +74,9 @@
   <div id="objective">Jelajahi kota — cari mobil parkir lalu tekan E untuk mengemudi.</div>
   <div id="wanted">WANTED <span id="wantedStars" class="star">☆☆☆☆☆</span></div>
   <div id="money">Rp0</div>
+  <div id="muteIcon">🔊 SUARA</div>
   <div id="stolenBadge" class="hidden">🚗 MOBIL CURIAN</div>
+  <div id="punchFlash" class="hidden">💥 PUKUL!</div>
   <div id="missionBanner" class="hidden"><h3 id="bannerTitle"></h3><p id="bannerText"></p></div>
   <canvas id="minimap" width="168" height="168"></canvas>
   <div id="speedo" class="hidden"><b id="speedNum">0</b><br><span>km/jam</span></div>
@@ -87,6 +95,7 @@
     <div class="controls">
       <b>W A S D</b> — jalan / gas, rem, belok saat mengemudi<br>
       <b>Shift</b> — lari &nbsp;·&nbsp; <b>E</b> — bajak / keluar mobil<br>
+      <b>F / klik mouse</b> — pukul (saat jalan kaki) &nbsp;·&nbsp; <b>M</b> — bisukan suara<br>
       <b>Seret mouse</b> — putar kamera &nbsp;·&nbsp; <b>Esc / P</b> — jeda
     </div><br>
     <button id="startBtn" class="bigbtn">▶ &nbsp;MULAI JELAJAH</button>

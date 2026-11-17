@@ -17,6 +17,8 @@ export function createHud() {
   const wantedStars = document.getElementById('wantedStars');
   const moneyEl = document.getElementById('money');
   const stolenEl = document.getElementById('stolenBadge');
+  const muteEl = document.getElementById('muteIcon');
+  const punchEl = document.getElementById('punchFlash');
   const banner = document.getElementById('missionBanner');
   const bannerTitle = document.getElementById('bannerTitle');
   const bannerText = document.getElementById('bannerText');
@@ -24,6 +26,7 @@ export function createHud() {
   const ctx = map.getContext('2d');
   const R = 84; // jari-jari minimap (px)
   let bannerTimer = null;
+  let punchTimer = null;
 
   function toMap(x, z) {
     return [R + (x / (CITY.half + 20)) * R, R + (z / (CITY.half + 20)) * R];
@@ -129,6 +132,16 @@ export function createHud() {
     },
     setMoney(amount) { moneyEl.textContent = formatRp(amount); },
     setStolen(stolen) { stolenEl.classList.toggle('hidden', !stolen); },
+    // Ikon speaker: 🔊 suara hidup, 🔇 dibisukan (tombol M).
+    setMuted(muted) { if (muteEl) muteEl.textContent = muted ? '🔇 BISU' : '🔊 SUARA'; },
+    // Kilat "PUKUL!" di tengah layar saat ayunan pukulan mendarat.
+    flashPunch(hit) {
+      if (!punchEl) return;
+      punchEl.textContent = hit ? '💥 PUKUL! KENA!' : '💥 PUKUL!';
+      punchEl.classList.remove('hidden');
+      if (punchTimer) clearTimeout(punchTimer);
+      punchTimer = setTimeout(() => punchEl.classList.add('hidden'), 350);
+    },
     // Banner tengah layar beberapa detik saat misi tuntas.
     showMissionComplete(mission) {
       bannerTitle.textContent = '★ MISI SELESAI — ' + mission.title + ' ★';

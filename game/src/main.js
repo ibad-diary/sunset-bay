@@ -5,7 +5,7 @@
 
 import * as THREE from 'three';
 import { CITY, PLAYER, CAR, TRAFFIC_COUNT, WALKER_COUNT, SAVE_EVERY_SECONDS, makeSeededRandom, pick } from './config.js';
-import { createInput, ACTION_ENTER_CAR, ACTION_PAUSE, ACTION_START } from './input.js';
+import { createInput, ACTION_ENTER_CAR, ACTION_PAUSE, ACTION_START, ACTION_PUNCH, ACTION_MUTE } from './input.js';
 import { buildCity } from './city.js';
 import { buildPerson } from './characters.js';
 import { makeDrivableCar, driveCar, resolveCircle, makeTraffic, updateTraffic, buildCarMesh } from './vehicles.js';
@@ -13,6 +13,8 @@ import { createHud } from './hud.js';
 import { saveGame, loadGame, hasSave } from './save.js';
 import { createWanted } from './wanted.js';
 import { createMissions, MISSIONS } from './missions.js';
+import { createCombat } from './combat.js';
+import { createAudio } from './audio.js';
 
 const params = new URLSearchParams(location.search);
 const SHOT = params.get('shot') || '';
@@ -36,6 +38,12 @@ const input = createInput(canvas);
 const hud = createHud();
 const wanted = createWanted(scene);
 const missions = createMissions(scene);
+const combat = createCombat(scene);
+const audio = createAudio();
+// AudioContext hanya boleh hidup setelah gestur pengguna — tombol apa
+// pun (termasuk MULAI) membangunkan suara; gagal pun game tetap jalan.
+window.addEventListener('keydown', () => audio.unlock());
+window.addEventListener('pointerdown', () => audio.unlock());
 
 // --- Pemain: Raka, kurir berjaket teal dan beanie merah. ---
 const playerRig = buildPerson({});
@@ -239,13 +247,39 @@ missions.onComplete = (mission) => {
   hud.showMissionComplete(mission);
   hud.setMoney(missions.money);
   hud.setWanted(wanted.level);
+  audio.jingle();
   refreshObjective();
 };
+
+// Satu ayunan pukulan (dipakai tombol F/klik maupun debug playtest):
+// animasi lengan + sapuan, bunyi, kilat HUD, dan wanted +1 bila kena.
+function doPunch() {
+  playerRig.punch();
+  const res = combat.tryPunch(player.x, player.z, player.heading, walkers, wanted.police, elapsed);
+  if (res.cooling) return res;
+  audio.punch(res.hit);
+  hud.flashPunch(res.hit);
+  if (res.walkersHit > 0 || res.policeHit) {
+    wanted.addStars(1);
+    hud.setWanted(wanted.level);
+    hud.setHint(res.policeHit
+      ? 'Kamu memukul polisi! Wanted +1 — kabur!'
+      : 'Kamu memukul pejalan kaki! Wanted +1.');
+  }
+  return res;
+}
 
 function startGame(fromSave) {
   const saved = fromSave ? loadGame() : null;
   if (saved) {
     player.x = saved.player.x; player.z = saved.player.z; player.heading = saved.player.heading;
+    // Mobil curian dari traffic (save v3): pulihkan lengkap dari carData.
+    if (saved.carData) {
+      const cd = saved.carData;
+      const restored = makeDrivableCar(scene, { x: cd.x, z: cd.z, heading: cd.heading }, cd.paint, cars.length);
+      restored.stolen = true;
+      cars.push(restored);
+    }
     if (saved.car && saved.car.index < cars.length) {
       const car = cars[saved.car.index];
       car.x = saved.car.x; car.z = saved.car.z; car.heading = saved.car.heading;
@@ -255,6 +289,7 @@ function startGame(fromSave) {
     if (typeof saved.money === 'number') missions.setMoney(saved.money);
     if (typeof saved.missionIndex === 'number') missions.setIndex(saved.missionIndex);
   }
+  audio.unlock(); // gestur klik MULAI: suara boleh hidup
   hud.setMoney(missions.money);
   hud.setWanted(wanted.level);
   refreshObjective();
@@ -316,6 +351,7 @@ function step(dt) {
 
   const actions = input.takeActions();
   if (actions & ACTION_PAUSE) togglePause();
+  if (actions & ACTION_MUTE) hud.setMuted(audio.toggleMute());
   if (screen !== 'play') return;
 
   // Awan melayang pelan ke timur.
@@ -323,7 +359,12 @@ function step(dt) {
     cloud.position.x += dt * 0.7;
     if (cloud.position.x > 160) cloud.position.x = -160;
   }
-  updateTraffic(traffic, dt);
+  // Traffic menghindar: berhenti bila pemain/mobilnya menghalangi jalan.
+  const avoidPoint = driving >= 0
+    ? { x: cars[driving].x, z: cars[driving].z }
+    : { x: player.x, z: player.z };
+  updateTraffic(traffic, dt, avoidPoint);
+  combat.update(dt);
 
   // Wanted + polisi: kejar pemain, lampu strobo, peluruhan saat sembunyi.
   const focusX = driving >= 0 ? cars[driving].x : player.x;
@@ -467,6 +508,7 @@ function step(dt) {
     hud.setDistrict(districtAt(player.x, player.z));
     const near = nearestCar(3.6);
     const nearTraffic = near ? null : nearestTrafficCar(4.5);
+    const nearWalker = walkers.some((w) => Math.hypot(w.x - player.x, w.z - player.z) < 3);
     if (near) {
       hud.setHint(near.stolen ? 'Tekan E untuk masuk mobil curianmu' : 'Tekan E untuk membajak mobil ini');
       hud.setObjective(near.stolen
@@ -475,6 +517,9 @@ function step(dt) {
     } else if (nearTraffic) {
       hud.setHint('Tekan E untuk membajak mobil yang lewat ini!');
       hud.setObjective('Mobil melintas di dekatmu — tekan E untuk membajaknya (wanted +2).');
+    } else if (nearWalker) {
+      hud.setHint('F pukul · WASD jalan · Shift lari · Seret mouse untuk melihat');
+      refreshObjective();
     } else {
       hud.setHint('WASD jalan · Shift lari · Seret mouse untuk melihat');
       refreshObjective();
@@ -483,8 +528,17 @@ function step(dt) {
       if (near) stealParkedCar(near);
       else if (nearTraffic) hijackTrafficCar(nearTraffic);
     }
+    if (actions & ACTION_PUNCH) doPunch();
     cam.tx = player.x; cam.tz = player.z; cam.ty = 1.8;
   }
+
+  // Suara per frame: dengung mesin ikut laju, sirene ikut jarak polisi.
+  audio.update(
+    driving >= 0,
+    driving >= 0 ? Math.abs(cars[driving].speed) * 3.6 : 0,
+    wanted.level,
+    wanted.nearestPoliceDist(focusX, focusZ),
+  );
 
   // Simpan otomatis tiap beberapa detik.
   saveTimer += dt;
@@ -493,9 +547,12 @@ function step(dt) {
     const car = driving >= 0 ? cars[driving] : null;
     saveGame({
       playerX: player.x, playerZ: player.z, playerHeading: player.heading,
-      // Mobil bajakan dari traffic (indeks >= 4) tidak dipulihkan saat muat:
-      // simpan tanpa mobil supaya save tetap valid.
+      // Mobil bajakan dari traffic (indeks >= 4) kini ikut tersimpan
+      // lengkap (posisi + warna) supaya bisa dipulihkan saat muat.
       carIndex: car && car.index < 4 ? car.index : -1,
+      carData: car && car.index >= 4
+        ? { x: car.x, z: car.z, heading: car.heading, paint: car.paint, stolen: true }
+        : null,
       carX: car ? car.x : 0, carZ: car ? car.z : 0,
       carHeading: car ? car.heading : 0,
       money: missions.money,
@@ -521,6 +578,14 @@ function frame(now) {
   camPos.y += (wantY - camPos.y) * 0.12;
   camPos.z += (wantZ - camPos.z) * 0.12;
   camPos.y = Math.max(1.2, camPos.y);
+  // Kamera jangan tembus gedung: bila posisinya masuk kotak gedung,
+  // naikkan ke atas atap gedung itu.
+  for (const c of city.colliders) {
+    if (c.top === undefined) continue;
+    if (camPos.x > c.minX - 0.6 && camPos.x < c.maxX + 0.6 &&
+        camPos.z > c.minZ - 0.6 && camPos.z < c.maxZ + 0.6 &&
+        camPos.y < c.top + 0.9) camPos.y = c.top + 0.9;
+  }
   camera.position.copy(camPos);
   camTarget.set(focusX, focusY, focusZ);
   camera.lookAt(camTarget);
@@ -560,6 +625,9 @@ function frame(now) {
 
   renderer.render(scene, camera);
   framesRendered += 1;
+  // Panggung foto combat: pukul di frame 24 supaya ayunan lengan +
+  // sapuan putih masih terlihat saat __shotReady di frame 30.
+  if (SHOT === 'combat' && framesRendered === 24 && screen === 'play') doPunch();
   if (framesRendered === 30) window.__shotReady = true;
 }
 
@@ -641,6 +709,17 @@ function stageShot() {
     camPos.set(-84, 6, 5);
     return;
   }
+  if (SHOT === 'combat') {
+    startGame(false);
+    // Raka berhadapan dengan satu pejalan kaki 1,8 m di depannya, siap
+    // memukul — pukulannya dipicu di frame 24 (lihat frame()).
+    player.x = 2; player.z = -30; player.heading = Math.PI;
+    const w = walkers[0];
+    w.x = 2; w.z = -31.8; w.axis = 'z'; w.dir = 1;
+    cam.yaw = 0; cam.pitch = 0.3; cam.dist = 8;
+    camPos.set(2, 4, -21);
+    return;
+  }
 }
 
 stageShot();
@@ -658,6 +737,12 @@ window.__sunsetBay = {
   get targetCar() { return missions.targetCar ? { x: missions.targetCar.x, z: missions.targetCar.z } : null; },
   get chase() { return { hold: missions.chaseHold, px: player.x, pz: player.z }; },
   get policePos() { return wanted.police.map((c) => ({ x: +c.x.toFixed(1), z: +c.z.toFixed(1), contact: +c.contactTimer.toFixed(2) })); },
+  get audio() { return audio.state(); },
+  get combat() { return { punches: combat.punches, hits: combat.hits }; },
+  get walkers() { return walkers.map((w) => ({ x: +w.x.toFixed(1), z: +w.z.toFixed(1), fleeT: +w.fleeT.toFixed(2) })); },
+  get traffic() { return traffic.map((c) => ({ x: +c.x.toFixed(1), z: +c.z.toFixed(1), speed: +(c.cruiseSpeed || c.speed).toFixed(1) })); },
+  get playerPos() { return { x: +player.x.toFixed(1), z: +player.z.toFixed(1), heading: +player.heading.toFixed(2) }; },
+  get cars() { return cars.map((c) => ({ index: c.index, x: +c.x.toFixed(1), z: +c.z.toFixed(1), stolen: !!c.stolen })); },
   // Bantuan playtest headless: memicu aksi yang sama seperti tombol pemain.
   debug: {
     setWanted(n) { wanted.setStars(n); hud.setWanted(wanted.level); },
@@ -677,6 +762,27 @@ window.__sunsetBay = {
       } else {
         player.x = pos.x + 2.5; player.z = pos.z + 2.5;
       }
+    },
+    // Pukul (bantuan playtest): sama seperti tombol F.
+    punch() {
+      if (screen !== 'play' || driving >= 0) return null;
+      return doPunch();
+    },
+    // Teleport Raka tepat di belakang satu pejalan kaki, menghadapnya.
+    gotoWalker() {
+      if (driving >= 0) return null;
+      const w = walkers[0];
+      if (!w) return null;
+      player.x = w.x;
+      player.z = w.z + 2.0;
+      player.heading = Math.PI; // menghadap -z, ke arah pejalan kaki
+      return { x: +w.x.toFixed(1), z: +w.z.toFixed(1) };
+    },
+    // Bisukan / hidupkan suara (bantuan playtest): sama seperti tombol M.
+    toggleMute() {
+      const m = audio.toggleMute();
+      hud.setMuted(m);
+      return m;
     },
     // Tarik mobil polisi terdekat ke samping pemain (bantuan playtest
     // penangkapan saja — memicu kontak 1 detik yang berujung TERTANGKAP).
