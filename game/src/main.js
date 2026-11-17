@@ -19,12 +19,15 @@ import { createAudio } from './audio.js';
 const params = new URLSearchParams(location.search);
 const SHOT = params.get('shot') || '';
 const STEP = 1 / 60;
+// Mode hemat (?fx=low): tanpa antialias + tanpa bayangan — untuk
+// perangkat lemah dan untuk playtest headless yang rendernya lambat.
+const LOWFX = params.get('fx') === 'low';
 
 const canvas = document.getElementById('view');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: !LOWFX });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, LOWFX ? 1 : 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = true;
+renderer.shadowMap.enabled = !LOWFX;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
