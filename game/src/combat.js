@@ -5,7 +5,8 @@
 
 import * as THREE from 'three';
 
-export const PUNCH_RANGE = 2.6;
+export const PUNCH_RANGE = 3.0; // jangkauan pukulan (m) — cukup longgar
+// supaya pejalan kaki yang sedang minggir (2,4 m/dtk) masih kena.
 export const PUNCH_ARC = 0.9; // radian dari arah hadap pemain
 export const PUNCH_COOLDOWN = 0.45;
 

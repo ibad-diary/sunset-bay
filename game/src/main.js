@@ -720,11 +720,13 @@ function stageShot() {
   }
   if (SHOT === 'combat') {
     startGame(false);
-    // Raka berhadapan dengan satu pejalan kaki 1,8 m di depannya, siap
-    // memukul — pukulannya dipicu di frame 24 (lihat frame()).
+    // Raka berhadapan dengan satu pejalan kaki 1,5 m di depannya, siap
+    // memukul — pukulannya dipicu di frame 24 (lihat frame()). Jarak
+    // 1,5 m supaya pejalan kaki yang minggir (2,4 m/dtk) masih dalam
+    // jangkauan pukulan (3,0 m) saat ayunan mendarat.
     player.x = 2; player.z = -30; player.heading = Math.PI;
     const w = walkers[0];
-    w.x = 2; w.z = -31.8; w.axis = 'z'; w.dir = 1;
+    w.x = 2; w.z = -31.5; w.axis = 'z'; w.dir = 1;
     cam.yaw = 0; cam.pitch = 0.3; cam.dist = 8;
     camPos.set(2, 4, -21);
     return;
