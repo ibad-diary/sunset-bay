@@ -106,6 +106,8 @@ let elapsed = 0;
 let hintHoldUntil = 0; // sampai detik game ini, hint penting tidak ditimpa
 let activeMissionId = null;
 let speedTrapCooldown = 0;
+let carWalkerHits = 0; // tabrakan mobil-pejalan kaki (diagnostik playtest)
+let lastCarWalkerHit = null;
 let ramCooldown = 0;
 let chaseStaged = false;
 
@@ -201,6 +203,11 @@ function hijackTrafficCar(tcar) {
   const car = makeDrivableCar(scene, { x: tcar.x, z: tcar.z, heading: tcar.heading }, paint, cars.length);
   car.stolen = true;
   car.parked = false;
+  // Bajakan mobil yang sedang jalan: lajunya ikut terbawa (bukan
+  // berhenti mendadak) — penting di Misi 3, supaya Raka tidak mulai
+  // kabur dari kecepatan 0 sementara patroli sudah 40-an meter di
+  // belakangnya.
+  car.speed = tcar.cruiseSpeed || tcar.speed || 0;
   cars.push(car);
   wanted.addStars(2);
   hud.setWanted(wanted.level);
@@ -376,7 +383,9 @@ function step(dt) {
   // Wanted + polisi: kejar pemain, lampu strobo, peluruhan saat sembunyi.
   const focusX = driving >= 0 ? cars[driving].x : player.x;
   const focusZ = driving >= 0 ? cars[driving].z : player.z;
-  wanted.update(dt, focusX, focusZ, city.colliders);
+  wanted.update(dt, focusX, focusZ, city.colliders,
+    driving >= 0 ? cars[driving].heading : player.heading,
+    driving >= 0 ? Math.abs(cars[driving].speed) : player.speed);
   hud.setWanted(wanted.level);
   if (wanted.arrestReady()) {
     showBusted();
@@ -454,6 +463,8 @@ function step(dt) {
       const d = Math.hypot(w.x - car.x, w.z - car.z);
       if (d < 2.2 && Math.abs(speed) > 2 && elapsed - w.hitAt > 3) {
         w.hitAt = elapsed;
+        carWalkerHits += 1;
+        lastCarWalkerHit = { x: +w.x.toFixed(1), z: +w.z.toFixed(1), at: +elapsed.toFixed(1) };
         wanted.addStars(2);
         hud.setWanted(wanted.level);
         hud.setHint('Kamu menabrak pejalan kaki! Wanted +2.');
@@ -753,9 +764,10 @@ window.__sunsetBay = {
   get audio() { return audio.state(); },
   get combat() { return { punches: combat.punches, hits: combat.hits }; },
   get walkers() { return walkers.map((w) => ({ x: +w.x.toFixed(1), z: +w.z.toFixed(1), fleeT: +w.fleeT.toFixed(2) })); },
+  get walkerHits() { return { count: carWalkerHits, last: lastCarWalkerHit }; },
   get traffic() { return traffic.map((c) => ({ x: +c.x.toFixed(1), z: +c.z.toFixed(1), speed: +(c.cruiseSpeed || c.speed).toFixed(1) })); },
   get playerPos() { return { x: +player.x.toFixed(1), z: +player.z.toFixed(1), heading: +player.heading.toFixed(2) }; },
-  get cars() { return cars.map((c) => ({ index: c.index, x: +c.x.toFixed(1), z: +c.z.toFixed(1), stolen: !!c.stolen })); },
+  get cars() { return cars.map((c) => ({ index: c.index, x: +c.x.toFixed(1), z: +c.z.toFixed(1), heading: +c.heading.toFixed(2), speed: +c.speed.toFixed(1), stolen: !!c.stolen })); },
   // Bantuan playtest headless: memicu aksi yang sama seperti tombol pemain.
   debug: {
     setWanted(n) { wanted.setStars(n); hud.setWanted(wanted.level); },

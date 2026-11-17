@@ -10,7 +10,14 @@ export const WANTED_MAX = 5;
 export const POLICE_MAX_ACTIVE = 3;
 export const DECAY_HIDDEN_SECONDS = 12;
 export const ARREST_CONTACT_SECONDS = 1;
-export const POLICE_TOP_SPEED = 26;
+// Laju puncak patroli: SENGAJA di bawah laju jelajah mobil pemain
+// (CAR.accel / CAR.drag = 14 / 0,55 ≈ 25,5 m/s) supaya kabur dengan
+// mengemudi bersih mungkin — pemain unggul ~4,5 m/s di jalan lurus,
+// tapi polisi tetap lebih cepat dari mobil yang melambat (belok,
+// menabrak gedung) sehingga penangkapan tetap mungkin. Dulu 26 m/s:
+// polisi lebih cepat dari mobil pemain bahkan di jalan lurus, jadi
+// kabur mengemudi mustahil secara matematis.
+export const POLICE_TOP_SPEED = 21;
 
 // Satu mobil patroli: bodi putih dengan kap + atap hitam dan palang lampu.
 function makePoliceCar(scene, x, z, heading) {
@@ -47,14 +54,41 @@ export function createWanted(scene) {
   let hiddenTimer = 0;
   let decayFlash = 0;
   const police = [];
+  // Jejak posisi pemain (6 dtk terakhir): patroli mengejar TITIK
+  // JEJAK, bukan posisi pemain saat ini — supaya kejar-kejaran
+  // mengikuti jalan di belakang pemain (tail chase), bukan memotong
+  // lurus menembus blok kota dan mencegat dari depan di tikungan.
+  // Dulu polisi membidik posisi saat ini: jalur lurus mereka jauh
+  // lebih pendek dari putaran pemain di jalan, jadi mereka mencegat
+  // head-on di tikungan dan Misi 3 mustahil diselesaikan mengemudi.
+  let trailTime = 0;
+  const trail = [];
+  const TRAIL_DELAY_DRIVING = 4; // dtk jejak saat pemain mengemudi
+  const TRAIL_DELAY_FOOT = 0.5; // dtk jejak saat pemain jalan kaki
 
-  function spawnPolice(px, pz) {
-    // Muncul di jalan agak jauh dari pemain, dari arah acak.
-    const angle = Math.random() * Math.PI * 2;
-    const d = 42 + Math.random() * 14;
-    const x = Math.max(-CITY.half + 6, Math.min(CITY.half - 6, px + Math.cos(angle) * d));
-    const z = Math.max(-CITY.half + 6, Math.min(CITY.half - 6, pz + Math.sin(angle) * d));
-    const car = makePoliceCar(scene, x, z, Math.atan2(px - x, pz - z));
+  function spawnPolice(px, pz, heading) {
+    // Muncul di BELAKANG pemain, relatif terhadap arah hadap/geraknya,
+    // supaya patroli mengejar dari belakang — tidak pernah muncul
+    // tiba-tiba di depan mobil pemain (dulu: arah acak, sering tepat
+    // di jalur mobil, lalu tilang ngebut + tabrak polisi menaikkan
+    // wanted saat pemain kabur). Jarak dijaga 42–56 m: bila arah
+    // belakang mengarah keluar kota, clamp batas kota bisa memangkas
+    // jarak (mis. pemain di tepi barat) — coba sudut yang makin
+    // melebar dari garis belakang, pakai yang pertama yang hasil
+    // clamp-nya tetap ≥ 40 m (fallback: yang terjauh).
+    const behind = (heading ?? 0) + Math.PI;
+    const offsets = [0, 0.5, -0.5, 1.0, -1.0, 1.6, -1.6, 2.4, -2.4, Math.PI];
+    let best = null;
+    for (const off of offsets) {
+      const a = behind + off + (Math.random() - 0.5) * 0.3;
+      const d = 42 + Math.random() * 14;
+      const x = Math.max(-CITY.half + 6, Math.min(CITY.half - 6, px + Math.cos(a) * d));
+      const z = Math.max(-CITY.half + 6, Math.min(CITY.half - 6, pz + Math.sin(a) * d));
+      const dist = Math.hypot(x - px, z - pz);
+      if (!best || dist > best.dist) best = { x, z, dist };
+      if (dist >= 40) break;
+    }
+    const car = makePoliceCar(scene, best.x, best.z, Math.atan2(px - best.x, pz - best.z));
     police.push(car);
     return car;
   }
@@ -95,25 +129,35 @@ export function createWanted(scene) {
 
     // Per detik: spawn/despawn patroli sesuai bintang, kejar pemain,
     // lampu kelap-kelip, dan peluruhan bintang saat bersembunyi.
-    update(dt, px, pz, colliders) {
+    // Kejar-kejaran ini TANPA teleport: polisi yang tertinggal jauh
+    // tetap mengemudi mengejar (laju puncak di bawah mobil pemain,
+    // jadi pengemudi bersih bisa menjauh), bukan dipindah mendekat.
+    // Dulu ada teleport saat jarak > 95 m — polisi muncul ulang 45 m
+    // ke arah acak, sering tepat di depan mobil, lalu tilang ngebut +
+    // tabrak polisi menaikkan wanted sehingga kabur mengemudi mustahil.
+    // Patroli membidik TITIK JEJAK pemain (bukan posisi saat ini):
+    // saat mengemudi, jejak 3 dtk lalu — mereka mengikuti jalan di
+    // belakang pemain; saat jalan kaki, jejak 0,5 dtk lalu supaya
+    // penangkapan pejalan kaki yang berhenti tetap mungkin.
+    update(dt, px, pz, colliders, heading, focusSpeed) {
       const want = Math.min(level, POLICE_MAX_ACTIVE);
-      while (police.length < want) spawnPolice(px, pz);
+      while (police.length < want) spawnPolice(px, pz, heading);
       while (police.length > want) despawnPolice(police[police.length - 1]);
 
+      // Rekam jejak + pilih titik yang dikejar patroli.
+      trailTime += dt;
+      trail.push({ x: px, z: pz, t: trailTime });
+      while (trail.length > 2 && trail[0].t < trailTime - 6) trail.shift();
+      const delay = (focusSpeed ?? 0) > 12 ? TRAIL_DELAY_DRIVING : TRAIL_DELAY_FOOT;
+      const tt = trailTime - delay;
+      let tgt = trail[0] || { x: px, z: pz };
+      for (const p of trail) { if (p.t <= tt) tgt = p; else break; }
+
       for (const car of police) {
-        // Polisi yang tertinggal terlalu jauh dipindah mendekat supaya
-        // kejar-kejaran tidak mati karena satu mobil nyasar ke ujung kota.
-        const d0 = Math.hypot(car.x - px, car.z - pz);
-        if (d0 > 95) {
-          const a = Math.random() * Math.PI * 2;
-          car.x = Math.max(-CITY.half + 6, Math.min(CITY.half - 6, px + Math.cos(a) * 45));
-          car.z = Math.max(-CITY.half + 6, Math.min(CITY.half - 6, pz + Math.sin(a) * 45));
-          car.speed = 0;
-        }
-        // Belok mengarah ke pemain, kejar dengan laju sedikit di bawah
-        // mobil pemain tercepat supaya kabur masih mungkin.
-        const dx = px - car.x;
-        const dz = pz - car.z;
+        // Belok mengarah ke titik jejak, kejar dengan laju sedikit di
+        // bawah mobil pemain tercepat supaya kabur masih mungkin.
+        const dx = tgt.x - car.x;
+        const dz = tgt.z - car.z;
         const dist = Math.hypot(dx, dz) || 1;
         const wantHeading = Math.atan2(dx, dz);
         let dh = wantHeading - car.heading;
@@ -135,10 +179,12 @@ export function createWanted(scene) {
         const on = Math.sin(car.flashPhase) > 0;
         car.redMat.emissiveIntensity = on ? 2.4 : 0.25;
         car.blueMat.emissiveIntensity = on ? 0.25 : 2.4;
-        // Kontak dengan pemain: hitung durasi sentuhan untuk penangkapan.
-        // Saat lepas, timer meluruh pelan (bukan reset instan) supaya
-        // polisi yang menyerempet dua kali tetap bisa menangkap.
-        if (dist < CAR.radius + 0.4) car.contactTimer += dt;
+        // Kontak dengan pemain (jarak SEBENARNYA, bukan ke jejak):
+        // hitung durasi sentuhan untuk penangkapan. Saat lepas, timer
+        // meluruh pelan (bukan reset instan) supaya polisi yang
+        // menyerempet dua kali tetap bisa menangkap.
+        const distPlayer = Math.hypot(px - car.x, pz - car.z);
+        if (distPlayer < CAR.radius + 0.4) car.contactTimer += dt;
         else car.contactTimer = Math.max(0, car.contactTimer - dt * 2);
       }
 
