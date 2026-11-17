@@ -1,61 +1,86 @@
-// Every tuning number and colour in one place. The playfield is a fixed 1280x720 logical area;
-// the renderer scales it to the window, so no rule below depends on the screen size.
+// Semua angka penyetel Sunset Bay di satu tempat: ukuran kota, gerak
+// karakter, fisika mobil arcade, dan warna-warna senja kota ini.
 
-export const FIELD = { width: 1280, height: 720, groundY: 664 };
+export const CITY = {
+  half: 100,            // kota membentang -100..100 di x dan z
+  roadGap: 40,          // jarak antar sumbu jalan
+  roadWidth: 10,        // lebar aspal
+  blockPad: 2,          // jarak gedung dari tepi blok
+  bayEdge: -104,        // garis pantai: laut di barat x < bayEdge
+  beachWidth: 8,
+};
 
-/** The simulation's fixed step, in seconds: 60 updates a second whatever the display's rate. */
-export const STEP = 1 / 60;
+export const STREETS = [-80, -40, 0, 40, 80]; // sumbu jalan di x dan di z
 
 export const PLAYER = {
-  width: 72,
-  height: 24,
-  speed: 560,
-  invulnerable: 1.5,
+  walkSpeed: 4.2,
+  runSpeed: 8.0,
+  accel: 26,
+  turnSpeed: 10,
+  radius: 0.55,
+  eyeHeight: 1.7,
 };
 
-export const LIVES = 3;
-
-export const BLOCK = {
-  minWidth: 40,
-  maxWidth: 110,
-  height: 36,
-  speed: 240,
-  speedPerLevel: 30,
-  speedJitter: 90,
-  interval: 0.55,
-  intervalScale: 0.88,
-  minInterval: 0.14,
-  dodgePoints: 1,
+export const CAR = {
+  accel: 14,            // m/s^2 saat gas
+  brake: 26,            // m/s^2 saat rem / mundur
+  drag: 0.55,           // hambatan udara per detik
+  maxSpeed: 30,         // ~108 km/jam
+  maxReverse: 9,
+  steerMax: 0.55,       // radian roda depan
+  steerSpeed: 2.4,
+  length: 4.4,
+  width: 1.9,
+  radius: 2.4,          // lingkaran tabrakan kasar
 };
 
-export const COIN = {
-  size: 24,
-  speed: 190,
-  speedPerLevel: 14,
-  interval: 1.4,
-  intervalJitter: 0.8,
-  points: 10,
-};
+export const TRAFFIC_COUNT = 6;
+export const WALKER_COUNT = 9;
 
-/** Seconds of play per level, and the last level: speeds and spawn rates stop growing there. */
-export const LEVEL = { seconds: 12, max: 12 };
+export const SAVE_KEY = 'sunset-bay.save.v1';
+export const SAVE_EVERY_SECONDS = 5;
 
-/** How many falling things can exist at once; the pool is allocated once, at boot. */
-export const POOL_SIZE = 64;
-
+// Palet senja: langit, laut, aspal, dan warna gedung yang hangat.
 export const PALETTE = {
-  backdrop: '#11141b',
-  sky: '#1b1f2a',
-  ground: '#2a3040',
-  player: '#4fc3f7',
-  block: '#e5534b',
-  coin: '#f2c94c',
-  panel: '#252b38',
-  text: '#eef1f5',
-  muted: '#8b93a3',
+  skyTop: 0x2e4a7a,
+  skyBottom: 0xff9a5c,
+  sun: 0xffd9a0,
+  sea: 0x1e6f8e,
+  sand: 0xd9b380,
+  grass: 0x4d7a4a,
+  asphalt: 0x4b4e56,
+  sidewalk: 0xa89f92,
+  curb: 0x6f6a62,
+  buildings: [0xe8b04b, 0xd96a4f, 0x7fb3a3, 0xc98bb0, 0x8fa8d8, 0xe0d6c0, 0xb56a8a, 0x6fa287],
+  windowLit: 0xffd98a,
+  windowDark: 0x2c3a52,
 };
 
-export const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+// RNG deterministik (mulberry32) supaya kotanya sama di tiap muatan.
+export function makeSeededRandom(seed) {
+  let a = seed >>> 0;
+  return function next() {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
-/** Where the best score is kept between visits (this browser only). */
-export const BEST_KEY = 'block-dodger.best';
+export function pick(rng, list) {
+  return list[Math.floor(rng() * list.length)];
+}
+
+// Jarak titik ke ruas jalan terdekat; dipakai untuk tahu apakah posisi
+// berada di atas aspal (untuk minimap dan suara langkah, nanti).
+export function nearestStreetDistance(x, z) {
+  let best = Infinity;
+  for (const s of STREETS) {
+    best = Math.min(best, Math.abs(x - s), Math.abs(z - s));
+  }
+  return best;
+}
+
+export function isOnRoad(x, z) {
+  return nearestStreetDistance(x, z) <= CITY.roadWidth / 2;
+}

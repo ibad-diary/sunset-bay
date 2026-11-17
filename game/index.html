@@ -1,19 +1,95 @@
 <!doctype html>
-<html lang="en">
+<html lang="id">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Block Dodger</title>
+<title>Sunset Bay — Kota Terbuka</title>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #11141b; }
-  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  /* Read aloud, never shown: the status line screen readers announce. */
-  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1a2233;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  .hidden { display: none !important; }
+
+  /* ---- HUD ---- */
+  #hud { position: fixed; inset: 0; pointer-events: none; color: #fff;
+    text-shadow: 0 1px 3px rgba(0,0,0,.7); }
+  #district { position: absolute; top: 14px; left: 16px; font-size: 20px;
+    font-weight: 700; letter-spacing: .5px; }
+  #objective { position: absolute; top: 40px; left: 16px; font-size: 14px; opacity: .92; }
+  #wanted { position: absolute; top: 14px; right: 16px; font-size: 14px;
+    font-weight: 700; letter-spacing: 2px; color: #cfd6e4; }
+  #wanted .star { color: #ffd34d; }
+  #speedo { position: absolute; right: 18px; bottom: 16px; text-align: right; }
+  #speedo b { font-size: 42px; font-weight: 800; line-height: 1; }
+  #speedo span { font-size: 13px; opacity: .85; }
+  #hint { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+    font-size: 15px; background: rgba(10,14,24,.55); padding: 8px 14px; border-radius: 8px;
+    white-space: nowrap; }
+  #minimap { position: absolute; left: 16px; bottom: 16px; width: 168px; height: 168px;
+    border: 2px solid rgba(255,255,255,.55); border-radius: 50%;
+    background: rgba(8,12,22,.72); }
+
+  /* ---- Layar menu ---- */
+  .screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(180deg, rgba(24,16,48,.62), rgba(8,10,26,.72)); color: #fff; }
+  .panel { max-width: 560px; padding: 34px 40px; text-align: center; }
+  .panel h1 { margin: 0 0 4px; font-size: 58px; letter-spacing: 3px; color: #ffb347;
+    text-shadow: 0 3px 0 #b3541e, 0 8px 24px rgba(0,0,0,.6); }
+  .panel h2 { margin: 0 0 18px; font-size: 17px; font-weight: 400; color: #ffd9a0; }
+  .panel p { font-size: 15px; line-height: 1.55; color: #e8eaf2; }
+  .controls { text-align: left; display: inline-block; font-size: 14px; line-height: 1.9;
+    background: rgba(255,255,255,.08); border-radius: 10px; padding: 12px 20px; margin: 10px 0 20px; }
+  .controls b { color: #ffd34d; }
+  .bigbtn { pointer-events: auto; cursor: pointer; font-size: 19px; font-weight: 700;
+    color: #231303; background: linear-gradient(180deg, #ffd34d, #ff9a3d);
+    border: 0; border-radius: 12px; padding: 14px 42px; box-shadow: 0 4px 0 #b3541e; }
+  .bigbtn:active { transform: translateY(3px); box-shadow: 0 1px 0 #b3541e; }
+  .fine { margin-top: 16px; font-size: 12px; color: #9aa3b5; }
 </style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
 </head>
 <body>
-<canvas id="game" aria-label="Block Dodger: move the paddle left and right to dodge falling blocks and catch coins"></canvas>
-<p id="status" role="status" aria-live="polite"></p>
+<canvas id="view" aria-label="Sunset Bay: kota terbuka 3D, jelajahi dengan berjalan kaki atau mengemudi"></canvas>
+
+<div id="hud" class="hidden">
+  <div id="district">Sunset Bay</div>
+  <div id="objective">Jelajahi kota — cari mobil parkir lalu tekan E untuk mengemudi.</div>
+  <div id="wanted">WANTED <span class="star">☆☆☆☆☆</span></div>
+  <canvas id="minimap" width="168" height="168"></canvas>
+  <div id="speedo" class="hidden"><b id="speedNum">0</b><br><span>km/jam</span></div>
+  <div id="hint">WASD jalan &nbsp;·&nbsp; Shift lari &nbsp;·&nbsp; Seret mouse untuk melihat</div>
+</div>
+
+<div id="startScreen" class="screen">
+  <div class="panel">
+    <h1>SUNSET BAY</h1>
+    <h2>Kota pesisir orisinal — jelajahi dengan berjalan kaki atau mengemudi</h2>
+    <p>Kamu Raka, kurir baru di kota teluk ini. Sore menjelang, jalanan ramai,
+       mobil-mobil terparkir di tepi jalan. Jelajahi distriknya, naik mobil,
+       dan rasakan kotanya sebelum malam turun.</p>
+    <div class="controls">
+      <b>W A S D</b> — jalan / gas, rem, belok saat mengemudi<br>
+      <b>Shift</b> — lari &nbsp;·&nbsp; <b>E</b> — masuk / keluar mobil<br>
+      <b>Seret mouse</b> — putar kamera &nbsp;·&nbsp; <b>Esc / P</b> — jeda
+    </div><br>
+    <button id="startBtn" class="bigbtn">▶ &nbsp;MULAI JELAJAH</button>
+    <button id="continueBtn" class="bigbtn hidden">↻ &nbsp;LANJUTKAN</button>
+    <p class="fine">Game orisinal buatan sendiri — semua gedung, mobil, dan karakter
+       dibuat dari bentuk dasar 3D. Tanpa aset dari game lain.</p>
+  </div>
+</div>
+
+<div id="pauseScreen" class="screen hidden">
+  <div class="panel">
+    <h1 style="font-size:40px">JEDA</h1>
+    <p>Posisimu tersimpan otomatis. Lanjutkan menjelajah Sunset Bay.</p>
+    <button id="resumeBtn" class="bigbtn">▶ &nbsp;LANJUT</button>
+    <p class="fine">Esc / P untuk kembali bermain.</p>
+  </div>
+</div>
+
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>
