@@ -100,6 +100,7 @@ let screen = 'start'; // start | play | pause | busted
 let saveTimer = 0;
 let framesRendered = 0;
 let elapsed = 0;
+let hintHoldUntil = 0; // sampai detik game ini, hint penting tidak ditimpa
 let activeMissionId = null;
 let speedTrapCooldown = 0;
 let ramCooldown = 0;
@@ -262,9 +263,12 @@ function doPunch() {
   if (res.walkersHit > 0 || res.policeHit) {
     wanted.addStars(1);
     hud.setWanted(wanted.level);
+    // Hint penting: ditahan 3 detik game supaya tidak langsung ditimpa
+    // hint jalan kaki yang ditulis ulang tiap frame.
     hud.setHint(res.policeHit
       ? 'Kamu memukul polisi! Wanted +1 — kabur!'
       : 'Kamu memukul pejalan kaki! Wanted +1.');
+    hintHoldUntil = elapsed + 3;
   }
   return res;
 }
@@ -509,21 +513,23 @@ function step(dt) {
     const near = nearestCar(3.6);
     const nearTraffic = near ? null : nearestTrafficCar(4.5);
     const nearWalker = walkers.some((w) => Math.hypot(w.x - player.x, w.z - player.z) < 3);
+    let hintText = 'WASD jalan · Shift lari · Seret mouse untuk melihat';
     if (near) {
-      hud.setHint(near.stolen ? 'Tekan E untuk masuk mobil curianmu' : 'Tekan E untuk membajak mobil ini');
+      hintText = near.stolen ? 'Tekan E untuk masuk mobil curianmu' : 'Tekan E untuk membajak mobil ini';
       hud.setObjective(near.stolen
         ? 'Mobil curianmu — tekan E untuk mengemudi.'
         : 'Mobil parkir di dekatmu — tekan E untuk membajaknya (wanted +1).');
     } else if (nearTraffic) {
-      hud.setHint('Tekan E untuk membajak mobil yang lewat ini!');
+      hintText = 'Tekan E untuk membajak mobil yang lewat ini!';
       hud.setObjective('Mobil melintas di dekatmu — tekan E untuk membajaknya (wanted +2).');
     } else if (nearWalker) {
-      hud.setHint('F pukul · WASD jalan · Shift lari · Seret mouse untuk melihat');
+      hintText = 'F pukul · WASD jalan · Shift lari · Seret mouse untuk melihat';
       refreshObjective();
     } else {
-      hud.setHint('WASD jalan · Shift lari · Seret mouse untuk melihat');
       refreshObjective();
     }
+    // Hint penting (mis. habis memukul) ditahan beberapa detik game.
+    if (elapsed >= hintHoldUntil) hud.setHint(hintText);
     if (actions & ACTION_ENTER_CAR) {
       if (near) stealParkedCar(near);
       else if (nearTraffic) hijackTrafficCar(nearTraffic);
@@ -737,6 +743,8 @@ window.__sunsetBay = {
   get targetCar() { return missions.targetCar ? { x: missions.targetCar.x, z: missions.targetCar.z } : null; },
   get chase() { return { hold: missions.chaseHold, px: player.x, pz: player.z }; },
   get policePos() { return wanted.police.map((c) => ({ x: +c.x.toFixed(1), z: +c.z.toFixed(1), contact: +c.contactTimer.toFixed(2) })); },
+  get elapsed() { return +elapsed.toFixed(2); },
+  get frames() { return framesRendered; },
   get audio() { return audio.state(); },
   get combat() { return { punches: combat.punches, hits: combat.hits }; },
   get walkers() { return walkers.map((w) => ({ x: +w.x.toFixed(1), z: +w.z.toFixed(1), fleeT: +w.fleeT.toFixed(2) })); },
@@ -762,6 +770,20 @@ window.__sunsetBay = {
       } else {
         player.x = pos.x + 2.5; player.z = pos.z + 2.5;
       }
+    },
+    // Teleport Raka (bantuan playtest): jalan kaki atau beserta mobil.
+    teleport(x, z, heading) {
+      if (driving >= 0) {
+        const car = cars[driving];
+        car.x = x; car.z = z;
+        if (heading !== undefined) car.heading = heading;
+        car.group.position.set(car.x, 0, car.z);
+        car.group.rotation.y = car.heading;
+      } else {
+        player.x = x; player.z = z;
+        if (heading !== undefined) player.heading = heading;
+      }
+      return { x, z };
     },
     // Pukul (bantuan playtest): sama seperti tombol F.
     punch() {
