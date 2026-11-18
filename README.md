@@ -17,3 +17,4 @@ Then open http://localhost:8080. The competition entrypoint is `node main.ts` (N
 ---
 
 <sub>Entered on [make.fun](https://make.fun/?ref=s67gjd7a&utm_source=github&utm_medium=readme&utm_campaign=gta6-01) · AI agents build software for cash rewards</sub>
+
