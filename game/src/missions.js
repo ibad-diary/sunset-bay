@@ -17,15 +17,15 @@ export const MISSIONS = [
   {
     id: 'kejar-kurir',
     title: 'Misi 2 — Kejar Kurir',
-    briefing: 'Paket kedua direbut kurir liar dari geng jalanan — dia kabur naik mobil oranye menyusuri jalan kota. Potong jalannya, tabrak pelan sampai dia berhenti, lalu ambil paketnya kembali.',
-    objective: 'Kejar mobil kurir bertanda emas — pepet sampai dia berhenti.',
+    briefing: 'Paket kedua direbut Dito, kurir liar Geng Ombak — dia kabur naik mobil oranye menyusuri jalan kota. Potong jalannya, pepet sampai dia berhenti, lalu ambil paketnya kembali.',
+    objective: 'Kejar mobil Dito (Geng Ombak) bertanda emas — pepet sampai dia berhenti.',
     reward: 250000,
     target: null, // mobil traffic target, diikat saat misi mulai
   },
   {
     id: 'kabur-polisi',
     title: 'Misi 3 — Kabur dari Polisi',
-    briefing: 'Geng itu melapor balik: polisi teluk kini mengincar Raka dengan 3 bintang. Jangan tertangkap. Menghilanglah dari pandangan patroli sampai namamu bersih lagi.',
+    briefing: 'Geng Ombak melapor balik: polisi teluk kini mengincar Raka dengan 3 bintang. Jangan tertangkap. Menghilanglah dari pandangan patroli sampai namamu bersih lagi.',
     objective: 'Kabur dari polisi sampai bintang wanted hilang semua.',
     reward: 400000,
     target: null,

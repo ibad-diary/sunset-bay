@@ -4,6 +4,10 @@
 // dibuat/dilanjutkan setelah gestur pengguna (klik/tombol), supaya
 // browser headless maupun browser biasa tidak melempar exception.
 
+// Stasiun radio kota: bus musik ambient prosedural (pad Am–F–C–G).
+// Namanya tampil di label mute HUD dan layar jeda.
+export const RADIO_STATION = 'SENJA FM';
+
 export function createAudio() {
   let ctx = null;
   let master = null;
@@ -41,7 +45,7 @@ export function createAudio() {
       master = ctx.createGain();
       master.gain.value = muted ? 0 : 0.9;
       master.connect(ctx.destination);
-      // Bus musik: pad sine pelan.
+      // Bus musik SENJA FM: pad sine pelan.
       musicGain = ctx.createGain();
       musicGain.gain.value = 0.05;
       musicGain.connect(master);
@@ -74,7 +78,7 @@ export function createAudio() {
           sirenOsc.frequency.setTargetAtTime(sirenHigh ? 960 : 720, ctx.currentTime, 0.08);
         } catch (_) { /* abaikan */ }
       }, 380);
-      // Pad musik: tiga sine, akor berganti tiap 5 detik.
+      // Pad musik SENJA FM: tiga sine, akor berganti tiap 5 detik.
       musicOscs = CHORDS[0].map((f) => {
         const o = ctx.createOscillator();
         o.type = 'sine';
@@ -191,6 +195,7 @@ export function createAudio() {
         soundsPlayed,
         engineOn,
         sirenOn,
+        station: RADIO_STATION,
       };
     },
   };

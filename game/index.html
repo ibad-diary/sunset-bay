@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sunset Bay — Kota Terbuka</title>
+<title>Sunset Bay — Open-World Courier Game</title>
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #1a2233;
     font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
@@ -26,6 +26,9 @@
     padding: 4px 10px; border-radius: 6px; }
   #muteIcon { position: absolute; top: 66px; right: 16px; font-size: 12px;
     font-weight: 700; letter-spacing: 1px; color: #e8eaf2; background: rgba(10,14,24,.55);
+    padding: 4px 10px; border-radius: 6px; }
+  #policeCall { position: absolute; top: 118px; right: 16px; font-size: 12px;
+    font-weight: 700; letter-spacing: 1px; color: #ffd34d; background: rgba(10,14,24,.55);
     padding: 4px 10px; border-radius: 6px; }
   #punchFlash { position: absolute; left: 50%; top: 38%; transform: translateX(-50%);
     font-size: 26px; font-weight: 800; letter-spacing: 1px; color: #ffd34d;
@@ -61,6 +64,14 @@
     border: 0; border-radius: 12px; padding: 14px 42px; box-shadow: 0 4px 0 #b3541e; }
   .bigbtn:active { transform: translateY(3px); box-shadow: 0 1px 0 #b3541e; }
   .fine { margin-top: 16px; font-size: 12px; color: #9aa3b5; }
+  /* ---- Panel statistik (layar jeda) ---- */
+  #statsPanel { text-align: left; display: inline-block; font-size: 14px; line-height: 1.9;
+    background: rgba(255,255,255,.08); border-radius: 10px; padding: 12px 20px; margin: 10px 0 20px;
+    min-width: 380px; }
+  #statsPanel h3 { margin: 0 0 4px; font-size: 15px; color: #ffd34d; letter-spacing: 1px; }
+  #statsPanel .row { display: flex; justify-content: space-between; gap: 24px; }
+  #statsPanel .row b { color: #fff; font-weight: 700; }
+  #statsPanel .row span { color: #ffd9a0; }
 </style>
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.min.js" } }
@@ -74,8 +85,9 @@
   <div id="objective">Jelajahi kota — cari mobil parkir lalu tekan E untuk mengemudi.</div>
   <div id="wanted">WANTED <span id="wantedStars" class="star">☆☆☆☆☆</span></div>
   <div id="money">Rp0</div>
-  <div id="muteIcon">🔊 SUARA</div>
+  <div id="muteIcon">📻 SENJA FM</div>
   <div id="stolenBadge" class="hidden">🚗 MOBIL CURIAN</div>
+  <div id="policeCall" class="hidden"></div>
   <div id="punchFlash" class="hidden">💥 PUKUL!</div>
   <div id="missionBanner" class="hidden"><h3 id="bannerTitle"></h3><p id="bannerText"></p></div>
   <canvas id="minimap" width="168" height="168"></canvas>
@@ -86,7 +98,7 @@
 <div id="startScreen" class="screen">
   <div class="panel">
     <h1>SUNSET BAY</h1>
-    <h2>Kota pesisir orisinal — jelajahi dengan berjalan kaki atau mengemudi</h2>
+    <h2>Open-World Courier Game — Kota pesisir orisinal, jelajahi dengan berjalan kaki atau mengemudi</h2>
     <p>Kamu Raka, kurir baru di kota teluk ini. Sore menjelang, jalanan ramai,
        mobil-mobil terparkir di tepi jalan. Jelajahi distriknya, naik mobil,
        dan rasakan kotanya sebelum malam turun. Tapi hati-hati: membajak
@@ -109,6 +121,19 @@
   <div class="panel">
     <h1 style="font-size:40px">JEDA</h1>
     <p>Posisimu tersimpan otomatis. Lanjutkan menjelajah Sunset Bay.</p>
+    <div id="statsPanel">
+      <h3>📊 STATISTIK — STATS</h3>
+      <div class="row"><span>Saldo / Balance</span><b id="statMoney">Rp0</b></div>
+      <div class="row"><span>Misi selesai / Missions</span><b id="statMissions">0/3</b></div>
+      <div class="row"><span>Misi 1 — Antar Paket</span><b id="statMission1">—</b></div>
+      <div class="row"><span>Misi 2 — Kejar Kurir</span><b id="statMission2">—</b></div>
+      <div class="row"><span>Misi 3 — Kabur dari Polisi</span><b id="statMission3">—</b></div>
+      <div class="row"><span>Wanted</span><b id="statWanted">☆☆☆☆☆</b></div>
+      <div class="row"><span>Polisi aktif / Police active</span><b id="statPolice">0</b></div>
+      <div class="row"><span>Distrik / District</span><b id="statDistrict">—</b></div>
+      <div class="row"><span>Simpan otomatis / Autosave</span><b id="statSave">tiap 5 detik</b></div>
+      <div class="row"><span>Radio</span><b id="statRadio">📻 SENJA FM</b></div>
+    </div>
     <button id="resumeBtn" class="bigbtn">▶ &nbsp;LANJUT</button>
     <p class="fine">Esc / P untuk kembali bermain.</p>
   </div>

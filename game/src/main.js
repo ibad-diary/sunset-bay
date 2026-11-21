@@ -1,7 +1,8 @@
 // Sunset Bay — orkestrasi utama: renderer three.js, kamera third-person,
 // gerak pejalan kaki, bajak mobil (parkir + traffic), wanted + polisi,
 // tiga misi cerita kurir, HUD, simpan otomatis, dan mode tangkapan layar
-// (?shot=start|walk|drive|aerial|steal|chase|mission).
+// (?shot=aerial|showcase|mission|stats — plus mode lama walk|drive|
+// steal|chase yang masih dipakai playtest).
 
 import * as THREE from 'three';
 import { CITY, PLAYER, CAR, TRAFFIC_COUNT, WALKER_COUNT, SAVE_EVERY_SECONDS, makeSeededRandom, pick } from './config.js';
@@ -12,9 +13,9 @@ import { makeDrivableCar, driveCar, resolveCircle, makeTraffic, updateTraffic, b
 import { createHud } from './hud.js';
 import { saveGame, loadGame, hasSave } from './save.js';
 import { createWanted } from './wanted.js';
-import { createMissions, MISSIONS } from './missions.js';
+import { createMissions, MISSIONS, formatRp } from './missions.js';
 import { createCombat } from './combat.js';
-import { createAudio } from './audio.js';
+import { createAudio, RADIO_STATION } from './audio.js';
 
 const params = new URLSearchParams(location.search);
 const SHOT = params.get('shot') || '';
@@ -111,10 +112,15 @@ let lastCarWalkerHit = null;
 let ramCooldown = 0;
 let chaseStaged = false;
 
+// Peta distrik per wilayah — nama orisinal, tampil di HUD #district.
 function districtAt(x, z) {
   if (x < -88) return 'Pantai Teluk';
-  if (Math.hypot(x - 20, z - 20) < 26) return 'Taman Teluk';
   if (z > 70) return 'Dermaga Selatan';
+  if (Math.hypot(x - 20, z - 20) < 26) return 'Taman Teluk';
+  if (x < -60) return 'Kampung Nelayan';
+  if (z < -60) return 'Pasar Senja';
+  if (x > 60) return 'Pelabuhan Timur';
+  if (z > 40) return 'Kampung Dermaga';
   return 'Sunset Bay — Pusat Kota';
 }
 
@@ -154,6 +160,28 @@ function refreshObjective() {
       ? m.title + ': ' + m.briefing + ' Hadiah ' + m.reward.toLocaleString('id-ID') + ' rupiah.'
       : 'Semua misi selesai! Raka kini kurir yang dikenal di Sunset Bay.';
   }
+}
+
+// Panel statistik layar jeda (#pauseScreen): angka nyata dari state
+// live game — saldo, progres misi, wanted, polisi aktif, distrik,
+// status simpan otomatis, dan stasiun radio.
+function fillStats() {
+  const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+  set('statMoney', formatRp(missions.money));
+  set('statMissions', missions.index + '/3');
+  MISSIONS.forEach((m, i) => {
+    set('statMission' + (i + 1), i < missions.index
+      ? '✓ selesai — ' + formatRp(m.reward)
+      : (missions.current && missions.current.id === m.id ? '▶ aktif' : '—'));
+  });
+  set('statWanted', '★'.repeat(wanted.level) + '☆'.repeat(5 - wanted.level));
+  set('statPolice', String(wanted.police.length) +
+    (wanted.police.length > 0 ? ' (' + wanted.police.map((p) => p.callsign).join(', ') + ')' : ''));
+  const fx = driving >= 0 ? cars[driving].x : player.x;
+  const fz = driving >= 0 ? cars[driving].z : player.z;
+  set('statDistrict', districtAt(fx, fz));
+  set('statSave', 'tiap ' + SAVE_EVERY_SECONDS + ' detik — aktif');
+  set('statRadio', (audio.muted ? '🔇 BISU · ' : '📻 ') + RADIO_STATION);
 }
 
 function enterCar(car) {
@@ -344,6 +372,7 @@ if (hasSave()) document.getElementById('continueBtn').classList.remove('hidden')
 function togglePause() {
   if (screen === 'play') {
     screen = 'pause';
+    fillStats();
     document.getElementById('pauseScreen').classList.remove('hidden');
   } else if (screen === 'pause') {
     screen = 'play';
@@ -387,6 +416,7 @@ function step(dt) {
     driving >= 0 ? cars[driving].heading : player.heading,
     driving >= 0 ? Math.abs(cars[driving].speed) : player.speed);
   hud.setWanted(wanted.level);
+  hud.setPoliceCall(wanted.level > 0 ? wanted.nearestCallsign(focusX, focusZ) : null);
   if (wanted.arrestReady()) {
     showBusted();
     return;
@@ -643,11 +673,23 @@ function frame(now) {
     }
   }
 
+  // Panggung foto showcase: satu polisi selalu 12 m di depan mobil,
+  // tepat di tengah jalan (0 lateral), menghadap ke arah pemain.
+  // Dipasang ulang TIAP frame: mobil melaju ~17 m/s ke arahnya,
+  // jadi penjaga "bila menjauh" saja tidak cukup — tanpa pin ini
+  // patroli sudah menempel bumper mobil saat frame 30 diambil.
+  if (SHOT === 'showcase' && wanted.police.length > 0 && driving >= 0) {
+    const car = cars[driving];
+    const cop = wanted.police[0];
+    cop.x = car.x + Math.sin(car.heading) * 12;
+    cop.z = car.z + Math.cos(car.heading) * 12;
+    cop.heading = car.heading + Math.PI;
+    cop.group.position.set(cop.x, 0, cop.z);
+    cop.group.rotation.y = cop.heading;
+  }
+
   renderer.render(scene, camera);
   framesRendered += 1;
-  // Panggung foto combat: pukul di frame 24 supaya ayunan lengan +
-  // sapuan putih masih terlihat saat __shotReady di frame 30.
-  if (SHOT === 'combat' && framesRendered === 24 && screen === 'play') doPunch();
   if (framesRendered === 30) window.__shotReady = true;
 }
 
@@ -659,13 +701,6 @@ window.addEventListener('resize', () => {
 
 // --- Mode tangkapan layar: panggung adegan nyata dari game, bukan gambar tempel. ---
 function stageShot() {
-  if (SHOT === 'start') {
-    // Layar judul di atas kota: kamera rendah di jalan dekat pantai.
-    player.x = -84; player.z = -10; player.heading = Math.PI / 2;
-    cam.yaw = Math.PI / 2 + Math.PI; cam.pitch = 0.18; cam.dist = 9;
-    camPos.set(-70, 4, -10);
-    return;
-  }
   if (SHOT === 'walk') {
     startGame(false);
     player.x = 2; player.z = -30; player.heading = Math.PI;
@@ -720,26 +755,45 @@ function stageShot() {
     cam.yaw = Math.PI; cam.pitch = 0.28;
     return;
   }
-  if (SHOT === 'mission') {
+  if (SHOT === 'showcase') {
     startGame(false);
-    // Misi 1: Raka berjalan di pantai menuju suar emas di ujung dermaga.
-    // Posisi z=5 supaya palem pantai tidak menutupi pandangan ke dermaga.
-    player.x = -98; player.z = 5; player.heading = -Math.PI / 2;
-    cam.yaw = Math.PI / 2; cam.pitch = 0.42; cam.dist = 12;
-    camPos.set(-84, 6, 5);
+    // Panggung "satu frame, banyak sistem": saldo hasil dua misi
+    // pertama, Misi 1 aktif (suar emas di ujung dermaga), mobil
+    // curian melaju ke barat menuju suar, wanted 3 + polisi mengejar.
+    missions.setMoney(400000);
+    hud.setMoney(400000);
+    const car = cars[0];
+    car.stolen = true;
+    car.x = -40; car.z = 2.4; car.heading = -Math.PI / 2; car.speed = 14;
+    car.group.position.set(car.x, 0, car.z);
+    car.group.rotation.y = car.heading;
+    enterCar(car);
+    input.inject('KeyW', true);
+    missions.armEscape(wanted);
+    refreshObjective();
+    cam.yaw = Math.PI / 2; cam.pitch = 0.28;
+    camPos.set(-28, 5, 2.4);
     return;
   }
-  if (SHOT === 'combat') {
+  if (SHOT === 'mission') {
     startGame(false);
-    // Raka berhadapan dengan satu pejalan kaki 1,5 m di depannya, siap
-    // memukul — pukulannya dipicu di frame 24 (lihat frame()). Jarak
-    // 1,5 m supaya pejalan kaki yang minggir (2,4 m/dtk) masih dalam
-    // jangkauan pukulan (3,0 m) saat ayunan mendarat.
-    player.x = 2; player.z = -30; player.heading = Math.PI;
-    const w = walkers[0];
-    w.x = 2; w.z = -31.5; w.axis = 'z'; w.dir = 1;
-    cam.yaw = 0; cam.pitch = 0.3; cam.dist = 8;
-    camPos.set(2, 4, -21);
+    // Misi 1: Raka besar di tengah frame, berdiri di dermaga
+    // menghadap suar emas di ujungnya.
+    player.x = -112; player.z = 2; player.heading = -Math.PI / 2;
+    cam.yaw = Math.PI / 2; cam.pitch = 0.15; cam.dist = 8;
+    camPos.set(-104, 4, 2);
+    return;
+  }
+  if (SHOT === 'stats') {
+    startGame(false);
+    // Layar jeda dengan panel statistik: progres 2/3 misi + saldo
+    // hasil dua misi pertama.
+    missions.setMoney(400000);
+    missions.setIndex(2);
+    hud.setMoney(400000);
+    screen = 'pause';
+    fillStats();
+    document.getElementById('pauseScreen').classList.remove('hidden');
     return;
   }
 }
@@ -755,6 +809,17 @@ window.__sunsetBay = {
   get money() { return missions.money; },
   get mission() { return missions.current ? missions.current.id : 'done'; },
   get police() { return wanted.police.length; },
+  get district() {
+    const fx = driving >= 0 ? cars[driving].x : player.x;
+    const fz = driving >= 0 ? cars[driving].z : player.z;
+    return districtAt(fx, fz);
+  },
+  get policeCall() {
+    if (wanted.level === 0) return null;
+    const fx = driving >= 0 ? cars[driving].x : player.x;
+    const fz = driving >= 0 ? cars[driving].z : player.z;
+    return wanted.nearestCallsign(fx, fz);
+  },
   get targetPos() { return missions.targetPos(); },
   get targetCar() { return missions.targetCar ? { x: missions.targetCar.x, z: missions.targetCar.z } : null; },
   get chase() { return { hold: missions.chaseHold, px: player.x, pz: player.z }; },

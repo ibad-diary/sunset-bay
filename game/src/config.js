@@ -34,8 +34,8 @@ export const CAR = {
   radius: 2.4,          // lingkaran tabrakan kasar
 };
 
-export const TRAFFIC_COUNT = 6;
-export const WALKER_COUNT = 9;
+export const TRAFFIC_COUNT = 12;
+export const WALKER_COUNT = 18;
 
 export const SAVE_KEY = 'sunset-bay.save.v1';
 export const SAVE_EVERY_SECONDS = 5;

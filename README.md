@@ -4,7 +4,7 @@
 [![rank](https://make.fun/badge/gta6-01/ibad-diary/sunset-bay/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/ibad-diary/sunset-bay/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-Sunset Bay is an original open-world crime game set in a fictional coastal city at sunset. Explore the city on foot, drive and steal cars, outrun a police wanted system, and play courier missions that open new districts and characters. Built with three.js (vendored, no build step) and playable in desktop Chrome.
+Sunset Bay is an original open-world courier game set in a fictional coastal city at sunset. Explore the city on foot, drive and steal cars, outrun a police wanted system (1–5 stars, up to 3 patrol cars), and play three courier missions with a minimap and autosave every 5 seconds. Built with three.js (vendored, no build step) and playable in desktop Chrome.
 
 ## Run it
 

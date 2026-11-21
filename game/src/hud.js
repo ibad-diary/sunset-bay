@@ -5,6 +5,7 @@
 
 import { CITY, STREETS } from './config.js';
 import { formatRp } from './missions.js';
+import { RADIO_STATION } from './audio.js';
 
 export function createHud() {
   const root = document.getElementById('hud');
@@ -18,6 +19,7 @@ export function createHud() {
   const moneyEl = document.getElementById('money');
   const stolenEl = document.getElementById('stolenBadge');
   const muteEl = document.getElementById('muteIcon');
+  const policeCallEl = document.getElementById('policeCall');
   const punchEl = document.getElementById('punchFlash');
   const banner = document.getElementById('missionBanner');
   const bannerTitle = document.getElementById('bannerTitle');
@@ -132,8 +134,16 @@ export function createHud() {
     },
     setMoney(amount) { moneyEl.textContent = formatRp(amount); },
     setStolen(stolen) { stolenEl.classList.toggle('hidden', !stolen); },
-    // Ikon speaker: 🔊 suara hidup, 🔇 dibisukan (tombol M).
-    setMuted(muted) { if (muteEl) muteEl.textContent = muted ? '🔇 BISU' : '🔊 SUARA'; },
+    // Callsign polisi terdekat saat wanted > 0; null = sembunyikan.
+    setPoliceCall(call) {
+      if (!policeCallEl) return;
+      if (!call) { policeCallEl.classList.add('hidden'); return; }
+      policeCallEl.textContent = '🚓 ' + call.callsign + ' — ' + call.role +
+        ' · ' + Math.round(call.dist) + ' m';
+      policeCallEl.classList.remove('hidden');
+    },
+    // Label radio: 📻 SENJA FM saat suara hidup, 🔇 BISU saat dibisukan (tombol M).
+    setMuted(muted) { if (muteEl) muteEl.textContent = muted ? '🔇 BISU' : '📻 ' + RADIO_STATION; },
     // Kilat "PUKUL!" di tengah layar saat ayunan pukulan mendarat.
     flashPunch(hit) {
       if (!punchEl) return;

@@ -19,7 +19,15 @@ export const ARREST_CONTACT_SECONDS = 1;
 // kabur mengemudi mustahil secara matematis.
 export const POLICE_TOP_SPEED = 21;
 
-// Satu mobil patroli: bodi putih dengan kap + atap hitam dan palang lampu.
+// Tiap mobil patroli punya callsign + peran, tampil di HUD saat wanted > 0.
+const POLICE_ROSTER = [
+  { callsign: 'Unit 7', role: 'Patroli' },
+  { callsign: 'Unit 12', role: 'Intersepsi' },
+  { callsign: 'Unit 3', role: 'Patroli' },
+  { callsign: 'Unit 21', role: 'Pengejaran' },
+  { callsign: 'Unit 9', role: 'Blokade' },
+];
+
 function makePoliceCar(scene, x, z, heading) {
   const { group, wheels } = buildCarMesh(0xf2f2f2);
   const blackMat = new THREE.MeshStandardMaterial({ color: 0x14161a, roughness: 0.5, metalness: 0.4 });
@@ -46,6 +54,7 @@ function makePoliceCar(scene, x, z, heading) {
   return {
     group, wheels, redMat, blueMat,
     x, z, heading, speed: 0, contactTimer: 0, flashPhase: Math.random() * 2,
+    callsign: '', role: '',
   };
 }
 
@@ -89,6 +98,11 @@ export function createWanted(scene) {
       if (dist >= 40) break;
     }
     const car = makePoliceCar(scene, best.x, best.z, Math.atan2(px - best.x, pz - best.z));
+    // Callsign diambil bergilir dari roster supaya tiap patroli aktif
+    // punya identitas berbeda di HUD.
+    const id = POLICE_ROSTER[police.length % POLICE_ROSTER.length];
+    car.callsign = id.callsign;
+    car.role = id.role;
     police.push(car);
     return car;
   }
@@ -125,6 +139,18 @@ export function createWanted(scene) {
         best = Math.min(best, Math.hypot(car.x - px, car.z - pz));
       }
       return best;
+    },
+
+    // Polisi terdekat + identitasnya (callsign + peran), untuk HUD.
+    nearestCallsign(px, pz) {
+      let best = null;
+      let bestD = Infinity;
+      for (const car of police) {
+        const d = Math.hypot(car.x - px, car.z - pz);
+        if (d < bestD) { best = car; bestD = d; }
+      }
+      if (!best) return null;
+      return { callsign: best.callsign, role: best.role, dist: bestD };
     },
 
     // Per detik: spawn/despawn patroli sesuai bintang, kejar pemain,

@@ -25,12 +25,13 @@ sendiri dari nol.
 5. Sistem wanted dan polisi — level buronan naik saat
    berbuat onar; polisi mengejar, memblokir, lalu mundur
    saat pemain lolos cukup lama.
-6. Misi dan cerita — rangkaian tugas kurir yang membuka
-   distrik baru, karakter baru, dan pilihan kecil.
+6. Misi dan cerita — rangkaian tiga tugas kurir di distrik kota
+   yang sudah terbuka semua sejak awal, dengan karakter yang sudah
+   ada di dunia (Pak Darman, Dito dari Geng Ombak).
 7. Combat sederhana — pukulan dan dorongan saat konflik
    jalanan, tanpa senjata berat di tahap awal.
-8. HUD dan minimap — kesehatan, wanted, kecepatan,
-   tujuan misi, dan peta kecil yang mengikuti pemain.
+8. HUD dan minimap — wanted, kecepatan, saldo, tujuan misi,
+   dan peta kecil yang mengikuti pemain.
 9. Start dan save — layar mulai, jeda, dan penyimpanan
    progres misi serta posisi pemain.
 
